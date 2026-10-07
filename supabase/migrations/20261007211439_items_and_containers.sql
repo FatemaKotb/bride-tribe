@@ -14,6 +14,8 @@
 --   ever in its claimer's bag (2026-10-08; the schema trigger enforces it).
 -- - An id that points at nothing raises NOT_FOUND, a code added to the
 --   contract's list (2026-10-08).
+-- - The vendor amount starts at 0 in the form, so an amount of 0 with
+--   nothing else filled in means "no vendor details" (2026-10-08).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -39,7 +41,8 @@ language sql immutable set search_path = public as $$
 $$;
 
 -- True when the vendor group has at least one field filled in. A group
--- left empty means "no vendor details".
+-- left empty means "no vendor details". The form starts the amount at 0,
+-- so an amount of 0 doesn't count on its own (ruling 2026-10-08).
 create function vendor_given(vendor jsonb) returns boolean
 language sql immutable set search_path = public as $$
   select case when jsonb_typeof(vendor) = 'object' then exists (
@@ -47,6 +50,7 @@ language sql immutable set search_path = public as $$
     where key in ('vendor_name', 'service', 'phone', 'address',
                   'expected_time', 'amount_egp', 'details')
       and clean_text(value) is not null
+      and not (key = 'amount_egp' and clean_text(value) ~ '^0+(\.0+)?$')
   ) else false end;
 $$;
 

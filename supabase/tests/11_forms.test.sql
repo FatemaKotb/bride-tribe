@@ -3,7 +3,7 @@ begin;
 \ir _helpers.psql
 \ir _read_helpers.psql
 
-select plan(46);
+select plan(51);
 
 select tests.wedding();
 
@@ -67,8 +67,18 @@ select is(
 select is(
   (select n ->> 'hint' from jsonb_array_elements(tests.field(get_form('item', '{}')::jsonb, 'vendor') -> 'fields') n
    where n ->> 'key' = 'expected_time'),
-  'Use 24-hour time, like 17:00.',
-  'time fields ask for 24-hour time (ruling)'
+  'Use 24-hour time, like 23:30.',
+  'time fields ask for 24-hour time, with 23:30 as the example (ruling)'
+);
+
+select is(
+  (select jsonb_build_object(
+     'quantity', tests.field(f, 'quantity') -> 'default',
+     'amount_egp', (select n -> 'default' from jsonb_array_elements(tests.field(f, 'vendor') -> 'fields') n
+                    where n ->> 'key' = 'amount_egp'))
+   from (select get_form('item', '{}')::jsonb as f) s),
+  '{"quantity": 1, "amount_egp": 0}',
+  'quantity starts at 1, the vendor amount at 0 (ruling)'
 );
 
 select is(
@@ -196,6 +206,13 @@ select is(
 );
 
 select is(
+  tests.field(get_form('move_to_container', jsonb_build_object('item_id', tests.item_id('Perfume', 'Sara')))::jsonb,
+              'container_id') -> 'default',
+  to_jsonb(tests.item_id('Blue bag')),
+  'the bag choice starts on the first bag (ruling)'
+);
+
+select is(
   tests.option_labels(tests.field(
     get_form('move_to_container', jsonb_build_object('item_id', tests.item_id('Hair clip')))::jsonb,
     'container_id')),
@@ -230,8 +247,19 @@ select is(
   (select f - 'key' - 'type' - 'options' - 'default' - 'value' - 'visible_if' - 'fields'
    from (select tests.field(get_form('car', '{"trip": "to_hotel"}')::jsonb, 'departure_earliest') as f) s),
   '{"label": "Earliest time to leave home", "required": true,
-    "hint": "Only choose times you''re truly fine with. The bride may pick any time in this window. Use 24-hour time, like 09:30."}',
+    "hint": "Only choose times you''re truly fine with. The bride may pick any time in this window. Use 24-hour time, like 23:30."}',
   'the departure window carries the contract''s note and the 24-hour hint (ruling)'
+);
+
+select is(
+  (select jsonb_object_agg(x ->> 'key', x -> 'default')
+   from jsonb_array_elements(get_form('car', '{"trip": "to_hotel"}')::jsonb -> 'fields') x
+   where x ->> 'type' in ('number', 'select'))
+  || jsonb_build_object('stop purpose',
+       tests.field(get_form('car', '{"trip": "to_hotel"}')::jsonb, 'stops') -> 'fields' -> 1 -> 'default'),
+  '{"seats": 0, "minutes_to_bride": 0, "minutes_to_hotel": 0, "home_area": "maadi",
+    "trunk_percent": "0", "stop purpose": "myself"}',
+  'numbers start at 0 and dropdowns on their first option, in a new stop too (ruling)'
 );
 
 select is(
@@ -339,6 +367,13 @@ select is(
   'offering a seat: everyone else, submitted to send_request as a passenger Offer'
 );
 
+select is(
+  tests.field(get_form('passenger_offer', jsonb_build_object('car_id', tests.car_id('Sara')))::jsonb,
+              'passenger_id') -> 'default',
+  to_jsonb(tests.member_id('Bride')),
+  'the passenger choice starts on the first name (ruling)'
+);
+
 select tests.act_as('Nour');
 select send_request(tests.car_id('Sara'), 'passenger', 'ask', passenger_id => tests.member_id('Nour'));
 select tests.act_as('Rana');
@@ -403,11 +438,19 @@ select is(
 );
 
 select is(
+  (select jsonb_build_object('item_id', tests.field(f, 'item_id') -> 'default',
+                             'pickup_type', tests.field(f, 'pickup_type') -> 'default')
+   from (select get_form('cargo_request', jsonb_build_object('car_id', tests.car_id('Bride')))::jsonb as f) s),
+  jsonb_build_object('item_id', tests.item_id('Flowers'), 'pickup_type', 'bride_home'),
+  'the cargo choices start on the first item and the bride''s home (ruling)'
+);
+
+select is(
   (select (tests.field(f, 'pickup_address') - 'key' - 'type' - 'options' - 'default' - 'value' - 'fields' - 'hint')
           || jsonb_build_object('ready_at_hint', tests.field(f, 'ready_at') ->> 'hint')
    from (select get_form('cargo_request', jsonb_build_object('car_id', tests.car_id('Bride')))::jsonb as f) s),
   '{"label": "Pickup address", "required": true, "visible_if": {"field": "pickup_type", "equals": "custom"},
-    "ready_at_hint": "Use 24-hour time, like 10:00."}',
+    "ready_at_hint": "Use 24-hour time, like 23:30."}',
   'a custom pickup needs an address; the ready time asks for 24-hour time'
 );
 

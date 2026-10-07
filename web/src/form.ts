@@ -114,7 +114,7 @@ export function validate(fields: Field[], values: Values, path = ''): Errors {
     } else if (field.type === 'list') {
       ((value ?? []) as Values[]).forEach((entry, i) => Object.assign(errors, validate(nested, entry, `${key}.${i}.`)));
     } else if (field.type === 'time' && readTime(value) === null) {
-      errors[key] = 'Use 24-hour time, as HH:MM.';
+      errors[key] = 'Use 24-hour time, like 23:30.';
     } else if (field.required && isBlank(outgoing(field, value, values))) {
       errors[key] = 'Please fill this in.';
     }

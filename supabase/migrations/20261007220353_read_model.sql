@@ -10,6 +10,9 @@
 --   shows a cancellation to the other party only (2026-10-08).
 -- - Time fields ask for 24-hour time, trunk space is required, and a
 --   Return home window can cross midnight (2026-10-08).
+-- - Form defaults: a dropdown starts on its first option, a number on 0
+--   (quantity on 1), and time hints give 23:30 as the example
+--   (2026-10-08).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -228,6 +231,18 @@ language sql immutable set search_path = public as $$
   end;
 $$;
 
+-- The first option a dropdown always shows (not one with a visible_if).
+create function first_option(options jsonb) returns jsonb
+language sql immutable set search_path = public as $$
+  select o.option -> 'value'
+  from jsonb_array_elements(coalesce(options, '[]')) with ordinality as o (option, position)
+  where coalesce(o.option -> 'visible_if', 'null') = 'null'
+  order by o.position
+  limit 1;
+$$;
+
+-- A dropdown starts on its first option and a number on 0, unless the
+-- field names another default (ruling 2026-10-08).
 create function make_field(
   field_key text, field_label text, field_type text, is_required boolean default false,
   options jsonb default null, hint text default null, default_value jsonb default null,
@@ -236,8 +251,12 @@ create function make_field(
 language sql immutable set search_path = public as $$
   select jsonb_build_object(
     'key', field_key, 'label', field_label, 'type', field_type, 'required', is_required,
-    'options', options, 'hint', hint, 'default', default_value, 'value', current_value,
-    'visible_if', visible_if, 'fields', nested);
+    'options', options, 'hint', hint,
+    'default', coalesce(default_value, case field_type
+                                         when 'select' then first_option(options)
+                                         when 'number' then '0'::jsonb
+                                       end),
+    'value', current_value, 'visible_if', visible_if, 'fields', nested);
 $$;
 
 -- A field is visible when another field equals this value. For a
@@ -1063,7 +1082,8 @@ begin
       make_field('name', 'Name', 'text', true, current_value => to_jsonb(base.name)),
       make_field('emoji', 'Emoji', 'emoji', current_value => to_jsonb(base.emoji)),
       make_field('description', 'Description', 'textarea', current_value => to_jsonb(base.description)),
-      make_field('quantity', 'Quantity', 'number', current_value => to_jsonb(base.quantity)),
+      make_field('quantity', 'Quantity', 'number', default_value => '1',
+                 current_value => to_jsonb(base.quantity)),
       make_field('tags', 'Tags', 'tags', options => tag_options(me),
                  hint => 'Pick a tag in use or type a new one.',
                  current_value => to_jsonb(coalesce(base.tags, '{}'))),
@@ -1084,7 +1104,7 @@ begin
                    make_field('address', 'Address', 'text', hint => 'Can be used as a pickup location.',
                               current_value => to_jsonb(vendor.address)),
                    make_field('expected_time', 'Arrival or ready-for-pickup time', 'time',
-                              hint => 'Use 24-hour time, like 17:00.',
+                              hint => 'Use 24-hour time, like 23:30.',
                               current_value => to_jsonb(hhmm(vendor.expected_time))),
                    make_field('amount_egp', 'Amount to be paid (EGP)', 'number',
                               current_value => to_jsonb(vendor.amount_egp)),
@@ -1191,7 +1211,7 @@ begin
                               when 'hotel_to_venue' then 'the hotel'
                               else 'the venue' end;
   window_hint := 'Only choose times you''re truly fine with. The bride may pick any time in this window. '
-                 || 'Use 24-hour time, like 09:30.'
+                 || 'Use 24-hour time, like 23:30.'
                  || case when car_trip = 'return_home'
                          then ' The window can cross midnight, like 23:30 to 00:30.' else '' end;
 
@@ -1338,7 +1358,7 @@ begin
       make_field('pickup_address', 'Pickup address', 'text', true,
                  visible_if => shown_if('pickup_type', '"custom"')),
       make_field('ready_at', 'Ready for pickup at', 'time',
-                 hint => 'Use 24-hour time, like 10:00.')),
+                 hint => 'Use 24-hour time, like 23:30.')),
     'send_request',
     case when direction = 'ask' then 'Send request' else 'Send offer' end);
 end;
@@ -1376,7 +1396,7 @@ revoke all on function
   make_action(text, text, text, text, jsonb, text), form_action(text, text, text, text, jsonb),
   make_badge(text, text), make_row(text, text, text, text, jsonb, text, uuid, jsonb),
   make_pair(text, text), pairs(jsonb[]), make_filter(text, text, jsonb, text),
-  filter_value(jsonb, text),
+  filter_value(jsonb, text), first_option(jsonb),
   make_field(text, text, text, boolean, jsonb, text, jsonb, jsonb, jsonb, jsonb),
   shown_if(text, jsonb), make_form(text, text, jsonb, jsonb, text, text),
   item_visibility_of(item), claim_badge(item), item_actions(item, uuid), item_row(item, uuid),

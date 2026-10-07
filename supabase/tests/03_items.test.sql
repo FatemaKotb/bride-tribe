@@ -3,7 +3,7 @@
 begin;
 \ir _helpers.psql
 
-select plan(65);
+select plan(67);
 
 select tests.reset_members();
 
@@ -89,6 +89,24 @@ select create_item(name => 'Pins', vendor => '{"vendor_name": "", "service": " "
 select is(
   (select count(*)::int from vendor_details where item_id = tests.item_id('Pins')), 0,
   'an empty vendor group means no vendor details'
+);
+
+-- The form starts the amount at 0, so a claimable item saved without
+-- touching the vendor group sends just that.
+select create_item(name => 'Balloons', type => 'claimable',
+                   vendor => '{"vendor_name": null, "service": null, "amount_egp": 0}');
+
+select is(
+  (select count(*)::int from vendor_details where item_id = tests.item_id('Balloons')), 0,
+  'an amount of 0 on its own means no vendor details (ruling)'
+);
+
+select create_item(name => 'Henna artist', type => 'claimable',
+                   vendor => '{"vendor_name": "Nada", "amount_egp": 0}');
+
+select is(
+  (select amount_egp from vendor_details where item_id = tests.item_id('Henna artist')), 0::numeric,
+  'with a vendor name, an amount of 0 is saved'
 );
 
 select create_item(
@@ -527,10 +545,11 @@ select update_item(
   tests.item_id('Photographer'), name => 'Photographer', type => 'claimable',
   vendor => '{"vendor_name": "Ahmed Hassan"}'
 );
-select delete_item(tests.item_id('Photographer'));
+select tests.item_id('Photographer') as photographer_id \gset
+select delete_item(:'photographer_id');
 
 select is(
-  (select count(*)::int from vendor_details), 0,
+  (select count(*)::int from vendor_details where item_id = :'photographer_id'), 0,
   'deleting an item deletes its vendor details'
 );
 
