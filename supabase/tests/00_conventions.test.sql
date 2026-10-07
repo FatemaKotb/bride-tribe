@@ -63,7 +63,8 @@ select is_empty(
        ('item_kind', 'item_kind'), ('item_visibility', 'item_visibility'),
        ('item_type', 'item_type'), ('trip', 'trip'), ('area', 'area'),
        ('stop_purpose', 'stop_purpose'), ('request_state', 'request_state'),
-       ('pickup_type', 'pickup_type')
+       ('pickup_type', 'pickup_type'), ('request_kind', 'request_kind'),
+       ('cancel_reason', 'cancel_reason')
      ) as s (option_set, enum_type)
      cross join lateral (
        select enumlabel::text as value from pg_enum

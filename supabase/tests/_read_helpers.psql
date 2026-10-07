@@ -1,0 +1,422 @@
+-- Helpers for the read-model tests. Include after _helpers.psql.
+
+-- ---------------------------------------------------------------------
+-- A small wedding, built through the contract functions
+-- ---------------------------------------------------------------------
+
+-- Sara: Perfume (shared, makeup), Hair clip (private, in Blue bag), Blue
+-- bag, Tote, a To the hotel car (2 seats), and the Giveaways she claimed.
+-- Mai: a copy of the Perfume, Photographer and Flowers (vendors, both
+-- unclaimed), Giveaways, and a Hotel to venue car. Bride: a To the hotel
+-- car. Nour and Rana start with nothing. Ends acting as Sara.
+create function tests.wedding() returns void
+language plpgsql as $$
+declare
+  copy_id uuid;
+begin
+  perform tests.reset_members();
+  insert into member (name, role) values ('Rana', 'bridesmaid');
+
+  perform tests.act_as('Sara');
+  perform create_item(name => 'Perfume', emoji => '📿', visibility => 'shared', tags => array['makeup']);
+  perform create_item(name => 'Hair clip', tags => array['hair']);
+  perform create_container(name => 'Blue bag', emoji => '👜');
+  perform create_container(name => 'Tote');
+  perform move_to_container(tests.item_id('Hair clip'), tests.item_id('Blue bag'));
+  perform register_car(
+    trip => 'to_hotel', seats => 2, departure_earliest => '09:00', departure_latest => '10:30',
+    home_area => 'maadi', minutes_to_bride => 20, minutes_to_hotel => 45,
+    stops => '[{"description": "Pharmacy", "purpose": "bride"}]',
+    trunk_percent => 50, notes => 'Leaving from Maadi');
+
+  perform tests.act_as('Mai');
+  perform create_item(name => 'Perfume', emoji => '📿', visibility => 'shared', tags => array['makeup'],
+                      copy_of => tests.item_id('Perfume', 'Sara'));
+  perform create_item(name => 'Photographer', emoji => '📸', type => 'claimable',
+    vendor => '{"vendor_name": "Ahmed Hassan", "service": "Photographer",
+                "expected_time": "17:00", "amount_egp": 2000}');
+  perform create_item(name => 'Flowers', emoji => '💐', type => 'claimable',
+    vendor => '{"vendor_name": "Rose Shop", "service": "Florist", "address": "9 Road 200",
+                "expected_time": "15:00"}');
+  perform create_item(name => 'Giveaways', emoji => '🎁', type => 'claimable');
+  perform register_car(trip => 'hotel_to_venue', seats => 3, departure_earliest => '18:00',
+                       departure_latest => '18:30', trunk_percent => 25);
+
+  perform tests.act_as('Bride');
+  perform register_car(trip => 'to_hotel', seats => 3, departure_earliest => '08:00',
+                       departure_latest => '08:30', home_area => 'october', trunk_percent => 100);
+
+  perform tests.act_as('Sara');
+  perform claim_item(tests.item_id('Giveaways'));
+
+  -- now() doesn't move inside a test, so date the copy after the original.
+  -- Look the id up first: a lookup on item inside an UPDATE of item can
+  -- miss the row the UPDATE has just rewritten.
+  copy_id := tests.item_id('Perfume', 'Mai');
+  update item set created_at = created_at + interval '1 minute' where id = copy_id;
+end;
+$$;
+
+-- ---------------------------------------------------------------------
+-- Reading responses
+-- ---------------------------------------------------------------------
+
+-- Action ids of a row or response, in order: "claim,pack,edit".
+create function tests.action_ids(node jsonb) returns text
+language sql immutable as $$
+  select coalesce(string_agg(a ->> 'id', ',' order by n), '')
+  from jsonb_array_elements(node -> 'actions') with ordinality as t (a, n);
+$$;
+
+-- Row titles of a list or section, in order: "Blue bag, Tote".
+create function tests.titles(node jsonb) returns text
+language sql immutable as $$
+  select coalesce(string_agg(r ->> 'title', ', ' order by n), '')
+  from jsonb_array_elements(node -> 'rows') with ordinality as t (r, n);
+$$;
+
+-- The one row with this title.
+create function tests.row_titled(node jsonb, row_title text) returns jsonb
+language plpgsql immutable as $$
+declare
+  found_row jsonb;
+begin
+  select r into strict found_row from jsonb_array_elements(node -> 'rows') r
+  where r ->> 'title' = row_title;
+  return found_row;
+end;
+$$;
+
+-- The one section of a detail response with this title.
+create function tests.section(detail jsonb, section_title text) returns jsonb
+language plpgsql immutable as $$
+declare
+  found_section jsonb;
+begin
+  select s into strict found_section from jsonb_array_elements(detail -> 'sections') s
+  where s ->> 'title' = section_title;
+  return found_section;
+end;
+$$;
+
+-- "Label: value; Label: value" for a section's fields.
+create function tests.pairs_text(section jsonb) returns text
+language sql immutable as $$
+  select coalesce(string_agg((f ->> 'label') || ': ' || (f ->> 'value'), '; ' order by n), '')
+  from jsonb_array_elements(section -> 'fields') with ordinality as t (f, n);
+$$;
+
+-- Badge labels of a row: "Shared, Full".
+create function tests.badges(r jsonb) returns text
+language sql immutable as $$
+  select coalesce(string_agg(b ->> 'label', ', ' order by n), '')
+  from jsonb_array_elements(r -> 'badges') with ordinality as t (b, n);
+$$;
+
+-- Keys of a JSON object, sorted: "id,label".
+create function tests.keys_of(obj jsonb) returns text
+language sql immutable as $$
+  select case when jsonb_typeof(obj) = 'object'
+    then (select coalesce(string_agg(k, ',' order by k), '') from jsonb_object_keys(obj) k)
+    else '<' || coalesce(jsonb_typeof(obj), 'missing') || '>' end;
+$$;
+
+-- Field keys of a form, in order.
+create function tests.field_keys(form jsonb) returns text
+language sql immutable as $$
+  select coalesce(string_agg(f ->> 'key', ',' order by n), '')
+  from jsonb_array_elements(form -> 'fields') with ordinality as t (f, n);
+$$;
+
+-- The one field of a form with this key.
+create function tests.field(form jsonb, field_key text) returns jsonb
+language plpgsql immutable as $$
+declare
+  found_field jsonb;
+begin
+  select f into strict found_field from jsonb_array_elements(form -> 'fields') f
+  where f ->> 'key' = field_key;
+  return found_field;
+end;
+$$;
+
+-- Option labels of a field: "Maadi, October".
+create function tests.option_labels(field jsonb) returns text
+language sql immutable as $$
+  select coalesce(string_agg(o ->> 'label', ', ' order by n), '')
+  from jsonb_array_elements(field -> 'options') with ordinality as t (o, n);
+$$;
+
+-- ---------------------------------------------------------------------
+-- Contract shapes (contract Sections 1 and 5). Each check returns the
+-- problems it finds, so is_empty() shows what's wrong and where.
+-- ---------------------------------------------------------------------
+
+create function tests.action_problems(a jsonb, at text) returns setof text
+language plpgsql as $$
+begin
+  if tests.keys_of(a) <> 'call,confirm,form,id,label,style' then
+    return next at || ': action keys are ' || tests.keys_of(a);
+    return;
+  end if;
+  if a ->> 'style' not in ('primary', 'secondary', 'danger') then
+    return next at || ': style is ' || coalesce(a ->> 'style', 'null');
+  end if;
+  if (jsonb_typeof(a -> 'call') = 'null') = (jsonb_typeof(a -> 'form') = 'null') then
+    return next at || ': an action needs exactly one of call and form';
+  end if;
+  if jsonb_typeof(a -> 'call') = 'object' then
+    if tests.keys_of(a -> 'call') <> 'args,function' then
+      return next at || ': call keys are ' || tests.keys_of(a -> 'call');
+    elsif not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                      where n.nspname = 'public' and p.proname = a -> 'call' ->> 'function'
+                        and has_function_privilege('authenticated', p.oid, 'execute')) then
+      return next at || ': calls ' || coalesce(a -> 'call' ->> 'function', 'nothing')
+                     || ', which the app can''t call';
+    end if;
+  end if;
+  if jsonb_typeof(a -> 'form') = 'object' and tests.keys_of(a -> 'form') <> 'context,name' then
+    return next at || ': form keys are ' || tests.keys_of(a -> 'form');
+  end if;
+end;
+$$;
+
+create function tests.row_problems(r jsonb, at text) returns setof text
+language plpgsql as $$
+declare
+  b jsonb;
+begin
+  if tests.keys_of(r) <> 'actions,badges,emoji,id,open,subtitle,title' then
+    return next at || ': row keys are ' || tests.keys_of(r);
+    return;
+  end if;
+  for b in select * from jsonb_array_elements(r -> 'badges') loop
+    if tests.keys_of(b) <> 'label,tone' or b ->> 'tone' not in ('neutral', 'success', 'warning', 'danger') then
+      return next at || ': badge ' || b::text;
+    end if;
+  end loop;
+  if jsonb_typeof(r -> 'open') <> 'null'
+     and (tests.keys_of(r -> 'open') <> 'detail,id' or r -> 'open' ->> 'detail' not in ('item', 'car')) then
+    return next at || ': open is ' || (r -> 'open')::text;
+  end if;
+  return query
+    select p from jsonb_array_elements(r -> 'actions') a,
+                  tests.action_problems(a, at || ' > ' || coalesce(a ->> 'id', '?')) p;
+end;
+$$;
+
+create function tests.list_problems(resp jsonb, at text) returns setof text
+language plpgsql as $$
+declare
+  f jsonb;
+begin
+  if tests.keys_of(resp) <> 'actions,empty_message,filters,rows,title' then
+    return next at || ': list keys are ' || tests.keys_of(resp);
+    return;
+  end if;
+  for f in select * from jsonb_array_elements(resp -> 'filters') loop
+    if tests.keys_of(f) <> 'key,label,multi,options,selected'
+       or jsonb_typeof(f -> 'options') <> 'array' or jsonb_typeof(f -> 'selected') <> 'array' then
+      return next at || ': filter ' || f::text;
+    end if;
+  end loop;
+  return query
+    select p from jsonb_array_elements(resp -> 'rows') r,
+                  tests.row_problems(r, at || ' > ' || coalesce(r ->> 'title', '?')) p;
+  return query
+    select p from jsonb_array_elements(resp -> 'actions') a,
+                  tests.action_problems(a, at || ' > ' || coalesce(a ->> 'id', '?')) p;
+end;
+$$;
+
+create function tests.detail_problems(resp jsonb, at text) returns setof text
+language plpgsql as $$
+declare
+  s jsonb;
+  f jsonb;
+begin
+  if tests.keys_of(resp) <> 'actions,emoji,sections,subtitle,title' then
+    return next at || ': detail keys are ' || tests.keys_of(resp);
+    return;
+  end if;
+  for s in select * from jsonb_array_elements(resp -> 'sections') loop
+    if tests.keys_of(s) = 'fields,title' then
+      for f in select * from jsonb_array_elements(s -> 'fields') loop
+        if tests.keys_of(f) <> 'label,value' then
+          return next at || ' > ' || (s ->> 'title') || ': field ' || f::text;
+        end if;
+      end loop;
+    elsif tests.keys_of(s) = 'empty_message,rows,title' then
+      return query
+        select p from jsonb_array_elements(s -> 'rows') r,
+                      tests.row_problems(r, at || ' > ' || (s ->> 'title') || ' > '
+                                            || coalesce(r ->> 'title', '?')) p;
+    else
+      return next at || ': section keys are ' || tests.keys_of(s);
+    end if;
+  end loop;
+  return query
+    select p from jsonb_array_elements(resp -> 'actions') a,
+                  tests.action_problems(a, at || ' > ' || coalesce(a ->> 'id', '?')) p;
+end;
+$$;
+
+create function tests.field_problems(f jsonb, at text) returns setof text
+language plpgsql as $$
+begin
+  if tests.keys_of(f) <> 'default,fields,hint,key,label,options,required,type,value,visible_if' then
+    return next at || ': field keys are ' || tests.keys_of(f);
+    return;
+  end if;
+  if f ->> 'type' not in ('text', 'textarea', 'number', 'emoji', 'tags', 'select', 'multiselect',
+                          'time', 'toggle', 'group', 'list') then
+    return next at || ': type is ' || (f ->> 'type');
+  end if;
+  if f ->> 'type' in ('select', 'multiselect') and jsonb_typeof(f -> 'options') <> 'array' then
+    return next at || ': a ' || (f ->> 'type') || ' needs options';
+  end if;
+  if jsonb_typeof(f -> 'visible_if') <> 'null' and tests.keys_of(f -> 'visible_if') <> 'equals,field' then
+    return next at || ': visible_if is ' || (f -> 'visible_if')::text;
+  end if;
+  if f ->> 'type' in ('group', 'list') then
+    if jsonb_typeof(f -> 'fields') <> 'array' or jsonb_array_length(f -> 'fields') = 0 then
+      return next at || ': a ' || (f ->> 'type') || ' needs nested fields';
+    else
+      return query
+        select p from jsonb_array_elements(f -> 'fields') n,
+                      tests.field_problems(n, at || ' > ' || coalesce(n ->> 'key', '?')) p;
+    end if;
+  end if;
+end;
+$$;
+
+create function tests.form_problems(form jsonb, at text) returns setof text
+language plpgsql as $$
+begin
+  if tests.keys_of(form) <> 'context,fields,name,submit,title' then
+    return next at || ': form keys are ' || tests.keys_of(form);
+    return;
+  end if;
+  if tests.keys_of(form -> 'submit') <> 'function,label'
+     or not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                    where n.nspname = 'public' and p.proname = form -> 'submit' ->> 'function'
+                      and has_function_privilege('authenticated', p.oid, 'execute')) then
+    return next at || ': submit is ' || (form -> 'submit')::text;
+  end if;
+  return query
+    select p from jsonb_array_elements(form -> 'fields') f,
+                  tests.field_problems(f, at || ' > ' || coalesce(f ->> 'key', '?')) p;
+end;
+$$;
+
+create function tests.home_problems(home jsonb) returns setof text
+language plpgsql as $$
+begin
+  if tests.keys_of(home) <> 'attention,me,my_status,status_board'
+     or tests.keys_of(home -> 'me') <> 'name,role_label'
+     or tests.keys_of(home -> 'my_status') <> 'label,options,updated,value' then
+    return next 'get_home: keys are ' || tests.keys_of(home);
+    return;
+  end if;
+  return query
+    select p from jsonb_array_elements(home -> 'attention') r,
+                  tests.row_problems(r, 'get_home > attention > ' || coalesce(r ->> 'title', 'Got it')) p;
+  return query
+    select p from jsonb_array_elements(home -> 'status_board') r,
+                  tests.row_problems(r, 'get_home > status_board > ' || coalesce(r ->> 'title', '?')) p;
+end;
+$$;
+
+-- Every screen the current member can open: home, every list view,
+-- and the detail of every item and car she can see.
+create function tests.screens() returns table (screen text, body jsonb)
+language plpgsql as $$
+declare
+  me uuid := current_member_id();
+  t  trip;
+  i  item;
+  c  car;
+  s  text;
+begin
+  screen := 'get_home'; body := get_home()::jsonb; return next;
+  screen := 'list_items mine'; body := list_items()::jsonb; return next;
+  screen := 'list_items shared'; body := list_items('{"owner": ["shared"]}')::jsonb; return next;
+  screen := 'list_items vendors'; body := list_items('{"vendor": ["has_vendor"]}')::jsonb; return next;
+  for i in select * from item x where can_see_item(x, me) loop
+    screen := 'get_item ' || i.name; body := get_item(i.id)::jsonb; return next;
+  end loop;
+  foreach t in array enum_range(null::trip) loop
+    screen := 'list_cars ' || t;
+    body := list_cars(jsonb_build_object('trip', jsonb_build_array(t)))::jsonb;
+    return next;
+  end loop;
+  for c in select * from car loop
+    screen := 'get_car ' || car_title(c, me) || ' ' || c.trip; body := get_car(c.id)::jsonb; return next;
+  end loop;
+  foreach s in array array['pending', 'confirmed', 'declined', 'cancelled'] loop
+    screen := 'list_requests ' || s;
+    body := list_requests(jsonb_build_object('state', jsonb_build_array(s)))::jsonb;
+    return next;
+  end loop;
+end;
+$$;
+
+-- Shape problems on every screen of the current member.
+create function tests.screen_problems() returns setof text
+language plpgsql as $$
+declare
+  s record;
+begin
+  for s in select * from tests.screens() loop
+    if s.screen = 'get_home' then
+      return query select * from tests.home_problems(s.body);
+    elsif s.screen like 'list_%' then
+      return query select * from tests.list_problems(s.body, s.screen);
+    else
+      return query select * from tests.detail_problems(s.body, s.screen);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Every action on a screen, however deeply nested.
+create function tests.all_actions(body jsonb) returns setof jsonb
+language sql immutable as $$
+  with recursive walk (node) as (
+    select body
+    union all
+    select child from walk, lateral (
+      select value from jsonb_each(
+        case when jsonb_typeof(walk.node) = 'object' then walk.node else '{}' end)
+      union all
+      select value from jsonb_array_elements(
+        case when jsonb_typeof(walk.node) = 'array' then walk.node else '[]' end)
+    ) as children (child)
+  )
+  select a from walk, jsonb_array_elements(walk.node -> 'actions') a
+  where jsonb_typeof(walk.node) = 'object' and jsonb_typeof(walk.node -> 'actions') = 'array';
+$$;
+
+-- Every form action on every screen of the current member must open a
+-- form of the right shape.
+create function tests.form_action_problems() returns setof text
+language plpgsql as $$
+declare
+  s    record;
+  a    jsonb;
+  form jsonb;
+  at   text;
+begin
+  for s in select * from tests.screens() loop
+    for a in select * from tests.all_actions(s.body) x where jsonb_typeof(x -> 'form') = 'object' loop
+      at := s.screen || ' > ' || (a ->> 'id');
+      begin
+        form := get_form(a -> 'form' ->> 'name', a -> 'form' -> 'context')::jsonb;
+        return query select * from tests.form_problems(form, at);
+      exception when others then
+        return next at || ': the form doesn''t open: ' || sqlerrm;
+      end;
+    end loop;
+  end loop;
+end;
+$$;
