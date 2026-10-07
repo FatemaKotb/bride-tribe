@@ -133,3 +133,8 @@ revoke all on function
 grant execute on function
   list_members_for_login(), sign_in(uuid), sign_out(), set_status(text), clear_attention()
   to authenticated;
+
+-- The one exception: the name list also works with the bare anon key, so
+-- the keep-alive workflow can call it without creating a session. It
+-- returns only names and roles, which anyone with the app link sees anyway.
+grant execute on function list_members_for_login() to anon;

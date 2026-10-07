@@ -28,8 +28,9 @@ create temp view public_function as
 
 select is_empty(
   $$ select signature from public_function
-     where has_function_privilege('anon', oid, 'execute') $$,
-  'anon (and so PUBLIC) can execute no function'
+     where has_function_privilege('anon', oid, 'execute')
+       and name <> 'list_members_for_login' $$,
+  'anon (and so PUBLIC) can execute no function except list_members_for_login'
 );
 
 select is_empty(

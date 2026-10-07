@@ -2,7 +2,7 @@
 begin;
 \ir _helpers.psql
 
-select plan(24);
+select plan(25);
 
 select tests.reset_members();
 
@@ -11,6 +11,11 @@ select tests.reset_members();
 -- ---------------------------------------------------------------------
 
 select has_function('public', 'list_members_for_login', array[]::name[]);
+
+select ok(
+  has_function_privilege('anon', 'list_members_for_login()', 'execute'),
+  'list_members_for_login works with the bare anon key (keep-alive)'
+);
 
 select tests.no_session();
 
