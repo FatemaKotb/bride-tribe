@@ -151,6 +151,57 @@ language sql as $$
   returning id;
 $$;
 
+-- The member's active (not withdrawn) car on a trip.
+create function tests.car_id(owner_name text, car_trip trip default 'to_hotel') returns uuid
+language plpgsql stable as $$
+declare
+  found_id uuid;
+begin
+  select id into strict found_id from car
+  where owner_id = tests.member_id(owner_name) and trip = car_trip and withdrawn_at is null;
+  return found_id;
+end;
+$$;
+
+-- A car's stored fields, with its stops and drop-off areas.
+create function tests.car_fields(target_id uuid) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'owner',              (select name from member where id = c.owner_id),
+    'trip',               c.trip,
+    'seats',              c.seats,
+    'departure_earliest', c.departure_earliest,
+    'departure_latest',   c.departure_latest,
+    'home_area',          c.home_area,
+    'home_area_other',    c.home_area_other,
+    'minutes_to_bride',   c.minutes_to_bride,
+    'minutes_to_hotel',   c.minutes_to_hotel,
+    'trunk_percent',      c.trunk_percent,
+    'notes',              c.notes,
+    'withdrawn',          c.withdrawn_at is not null,
+    'stops', (select coalesce(jsonb_agg(jsonb_build_object(
+                'description', s.description, 'purpose', s.purpose) order by s.position), '[]')
+              from car_stop s where s.car_id = c.id),
+    'dropoff', (select coalesce(jsonb_agg(jsonb_build_object(
+                  'area', d.area, 'area_other', d.area_other) order by d.area), '[]')
+                from car_dropoff_area d where d.car_id = c.id))
+  from car c where c.id = target_id;
+$$;
+
+-- A passenger Ask inserted directly, sent by the passenger.
+create function tests.add_passenger_request(
+  target_car_id uuid, passenger_name text, request_state request_state default 'pending'
+) returns uuid
+language sql as $$
+  insert into request (car_id, trip, direction, kind, created_by_id, passenger_id,
+                       state, cancel_reason)
+  select c.id, c.trip, 'ask', 'passenger', tests.member_id(passenger_name),
+         tests.member_id(passenger_name), request_state,
+         case when request_state = 'cancelled' then 'by_sender'::cancel_reason end
+  from car c where c.id = target_car_id
+  returning id;
+$$;
+
 -- A cargo Ask inserted directly, sent by the cargo's owner.
 create function tests.add_cargo_request(
   target_car_id uuid, target_item_id uuid, request_state request_state default 'pending'
