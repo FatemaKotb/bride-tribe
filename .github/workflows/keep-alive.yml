@@ -1,0 +1,41 @@
+# Calls the backend every 3 days, so the free Supabase project is never
+# paused for inactivity (it pauses after a week without requests).
+# Uses the same SUPABASE_URL and SUPABASE_ANON_KEY secrets as Deploy.
+name: Keep Supabase awake
+
+on:
+  schedule:
+    # 06:17 UTC on days 1, 4, 7, ... of each month, so never more than
+    # 3 days apart. GitHub may start scheduled runs a little late.
+    - cron: '17 6 */3 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      # The one function that works without signing in.
+      - name: Call list_members_for_login
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Add the SUPABASE_URL and SUPABASE_ANON_KEY repository secrets (see docs/deployment.md)."
+            exit 1
+          fi
+          # Checks the status itself: with --retry, some curl versions exit 0
+          # on an HTTP error even with --fail.
+          status=$(curl --silent --show-error --retry 3 --output response.json --write-out '%{http_code}' \
+            --request POST "$SUPABASE_URL/rest/v1/rpc/list_members_for_login" \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Content-Type: application/json" \
+            --data '{}')
+          if [ "$status" != 200 ]; then
+            echo "::error::Supabase answered HTTP $status: $(cat response.json 2>/dev/null)"
+            exit 1
+          fi
+          members=$(jq -e '.members | length' response.json)
+          echo "Supabase answered with $members members."

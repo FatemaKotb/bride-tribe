@@ -43,6 +43,11 @@ firewall for private networks (Windows usually asks the first time).
 Installing the app on the home screen needs HTTPS, so it works once the app is
 deployed, not over the local address.
 
+## Deploy
+
+GitHub Actions publishes the app to GitHub Pages on every push to `main`.
+The one-time setup is in [docs/deployment.md](../docs/deployment.md).
+
 ## Other commands
 
 - `npm run build`: type-check and build to `dist/`.
