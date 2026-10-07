@@ -10,6 +10,10 @@
 -- - Deleting an item deletes its declined cargo requests (2026-10-08).
 -- - Only the claimer moves a claimed item between bags, never its owner
 --   (2026-10-08; narrower than the contract's move_to_container).
+-- - An item made claimable leaves its bag, so a claimable item is only
+--   ever in its claimer's bag (2026-10-08; the schema trigger enforces it).
+-- - An id that points at nothing raises NOT_FOUND, a code added to the
+--   contract's list (2026-10-08).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -140,10 +144,27 @@ language sql immutable set search_path = public as $$
               else target.owner_id end;
 $$;
 
+-- The item, locked until the calling function finishes, or NOT_FOUND
+-- when it was deleted after the member's screen loaded.
+create function lock_item(target_id uuid) returns item
+language plpgsql set search_path = public as $$
+declare
+  found_item item%rowtype;
+begin
+  select * into found_item from item where id = target_id for update;
+  if not found then
+    raise exception using
+      message = 'This item was deleted.',
+      hint    = 'NOT_FOUND';
+  end if;
+  return found_item;
+end;
+$$;
+
 revoke all on function
   clean_text(text), clean_tags(text[]), vendor_given(jsonb),
   check_item_fields(text, int, item_type, jsonb), save_vendor_details(uuid, jsonb),
-  cancel_cargo_requests(uuid), cargo_owner(item)
+  cancel_cargo_requests(uuid), cargo_owner(item), lock_item(uuid)
   from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------
@@ -176,8 +197,12 @@ begin
   -- BR-07: a copy joins the group of the shared personal item it copies.
   if create_item.copy_of is not null then
     select * into source from item where id = create_item.copy_of;
-    if not found
-       or source.type is distinct from 'personal'
+    if not found then
+      raise exception using
+        message = 'This item was deleted.',
+        hint    = 'NOT_FOUND';
+    end if;
+    if source.type is distinct from 'personal'
        or source.visibility is distinct from 'shared' then
       raise exception using
         message = 'This item can''t be copied.',
@@ -231,8 +256,8 @@ declare
   target   item%rowtype;
   new_type item_type;
 begin
-  select * into target from item where id = update_item.item_id for update;
-  if not found or target.owner_id <> me then
+  target := lock_item(update_item.item_id);
+  if target.owner_id <> me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
@@ -275,11 +300,15 @@ begin
     type        = new_type,
     -- BR-06: claimable items are always shared.
     visibility  = case when new_type = 'claimable' then 'shared'
-                       else coalesce(update_item.visibility, target.visibility) end
+                       else coalesce(update_item.visibility, target.visibility) end,
+    -- A newly claimable item is unclaimed, so no one handles it: it leaves
+    -- its bag, as when a claim is released (ruling 2026-10-08). The bag
+    -- keeps its car.
+    parent_id   = case when target.type = 'personal' and new_type = 'claimable' then null
+                       else target.parent_id end
   where id = target.id;
 
-  -- A newly claimable item is unclaimed, and unclaimed items can't be
-  -- cargo (BR-24), so its cargo requests go, as when a claim is released.
+  -- Unclaimed items can't be cargo (BR-24), so its cargo requests go too.
   if target.type = 'personal' and new_type = 'claimable' then
     perform cancel_cargo_requests(target.id);
   end if;
@@ -312,8 +341,8 @@ declare
   me     uuid := require_member();
   target item%rowtype;
 begin
-  select * into target from item where id = delete_item.item_id for update;
-  if not found or target.owner_id <> me then
+  target := lock_item(delete_item.item_id);
+  if target.owner_id <> me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
@@ -342,8 +371,8 @@ declare
   me     uuid := require_member();
   target item%rowtype;
 begin
-  select * into target from item where id = claim_item.item_id for update;
-  if not found or target.type is distinct from 'claimable' then
+  target := lock_item(claim_item.item_id);
+  if target.type is distinct from 'claimable' then
     raise exception using
       message = 'This item can''t be claimed.',
       hint    = 'NOT_CLAIMABLE';
@@ -364,31 +393,23 @@ begin
 end;
 $$;
 
--- Only the claimer can release (BR-02, BR-08). The item leaves the
--- claimer's bag; a bag of the item's owner keeps it.
+-- Only the claimer can release (BR-02, BR-08). A claimed item can only be
+-- in its claimer's bag, so releasing always takes it out.
 create function release_claim(item_id uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   me     uuid := require_member();
   target item%rowtype;
 begin
-  select * into target from item where id = release_claim.item_id for update;
-  if not found or target.claimed_by_id is distinct from me then
+  target := lock_item(release_claim.item_id);
+  if target.claimed_by_id is distinct from me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
   end if;
 
   perform cancel_cargo_requests(target.id);
-
-  update item set
-    claimed_by_id = null,
-    parent_id = case
-      when exists (select 1 from item bag where bag.id = target.parent_id and bag.owner_id = me)
-        then null
-      else target.parent_id
-    end
-  where id = target.id;
+  update item set claimed_by_id = null, parent_id = null where id = target.id;
 end;
 $$;
 
@@ -398,8 +419,8 @@ declare
   me     uuid := require_member();
   target item%rowtype;
 begin
-  select * into target from item where id = set_packed.item_id for update;
-  if not found or cargo_owner(target) is distinct from me then
+  target := lock_item(set_packed.item_id);
+  if cargo_owner(target) is distinct from me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
@@ -420,8 +441,8 @@ declare
   target item%rowtype;
   bag    item%rowtype;
 begin
-  select * into target from item where id = move_to_container.item_id for update;
-  if not found or cargo_owner(target) is distinct from me then
+  target := lock_item(move_to_container.item_id);
+  if cargo_owner(target) is distinct from me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
@@ -439,7 +460,12 @@ begin
   end if;
 
   select * into bag from item where id = move_to_container.container_id;
-  if not found or bag.kind <> 'container' then
+  if not found then
+    raise exception using
+      message = 'This bag or box was deleted.',
+      hint    = 'NOT_FOUND';
+  end if;
+  if bag.kind <> 'container' then
     raise exception using
       message = 'Pick a bag or box.',
       hint    = 'NOT_A_CONTAINER';

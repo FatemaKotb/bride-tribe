@@ -3,7 +3,7 @@
 begin;
 \ir _helpers.psql
 
-select plan(63);
+select plan(65);
 
 select tests.reset_members();
 
@@ -221,8 +221,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select create_item(name => %L, copy_of => %L)', 'Ghost', gen_random_uuid()),
-  'COPY_NOT_ALLOWED', 'This item can''t be copied.',
-  'an unknown item can''t be copied'
+  'NOT_FOUND', 'This item was deleted.',
+  'copying an item that was deleted raises NOT_FOUND'
 );
 
 select tests.throws_error(
@@ -286,8 +286,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select update_item(%L, name => %L)', gen_random_uuid(), 'Ghost'),
-  'NOT_ALLOWED', 'You can''t change this.',
-  'an unknown item can''t be edited'
+  'NOT_FOUND', 'This item was deleted.',
+  'editing an item that was deleted raises NOT_FOUND'
 );
 
 update item set claimed_by_id = tests.member_id('Mai') where id = tests.item_id('Photographer');
@@ -366,6 +366,23 @@ select is(
   array[tests.request_state(:'clip_pending'), tests.request_state(:'clip_confirmed')],
   array['cancelled/auto', 'cancelled/auto'],
   'making an item claimable cancels its cargo requests: it has no cargo owner until claimed (BR-24)'
+);
+
+-- An item in a bag that has a car, made claimable.
+select create_item(name => 'Scarf');
+select move_to_container(tests.item_id('Scarf'), tests.item_id('Blue bag'));
+select tests.add_cargo_request(:'bride_to_venue', tests.item_id('Blue bag'), 'confirmed') as bag_confirmed \gset
+
+select update_item(tests.item_id('Scarf'), name => 'Scarf', type => 'claimable');
+
+select is(
+  tests.item_fields(tests.item_id('Scarf')) ->> 'in', null,
+  'an item made claimable leaves its bag: no one handles it until it''s claimed (ruling)'
+);
+
+select is(
+  tests.request_state(:'bag_confirmed'), 'confirmed',
+  'the bag keeps its car'
 );
 
 -- Claimable to personal: only unclaimed and without vendor details.
@@ -450,8 +467,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select delete_item(%L)', gen_random_uuid()),
-  'NOT_ALLOWED', 'You can''t change this.',
-  'an unknown item can''t be deleted'
+  'NOT_FOUND', 'This item was deleted.',
+  'deleting an item that was already deleted raises NOT_FOUND'
 );
 
 select tests.act_as('Sara');

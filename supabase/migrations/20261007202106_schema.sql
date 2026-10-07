@@ -141,19 +141,24 @@ create table vendor_details (
 create function check_item_integrity() returns trigger
 language plpgsql as $$
 declare
-  parent item%rowtype;
+  parent      item%rowtype;
+  bag_owner   uuid;  -- whose bag this item may be in
 begin
-  -- BR-10: a container must be a container, and it must belong to the
-  -- item's owner or to the member who claimed the item.
+  -- BR-10: a container must be a container, and it holds only its
+  -- owner's cargo (BR-24): their personal items, and the claimable items
+  -- they claimed. So an unclaimed item is in no bag, and a claimed one
+  -- only in its claimer's (ruling 2026-10-08, narrower than the ERD's
+  -- "owner or claimer").
   if new.parent_id is not null then
     select * into parent from item where id = new.parent_id;
-    if parent.kind <> 'container' then
+    if not found or parent.kind <> 'container' then
       raise exception using
         message = 'Pick a bag or box.',
         hint    = 'NOT_A_CONTAINER';
     end if;
-    if parent.owner_id <> new.owner_id
-       and parent.owner_id is distinct from new.claimed_by_id then
+    bag_owner := case when new.type = 'claimable' then new.claimed_by_id
+                      else new.owner_id end;
+    if parent.owner_id is distinct from bag_owner then
       raise exception using
         message = 'You can''t change this.',
         hint    = 'NOT_ALLOWED';

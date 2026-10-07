@@ -3,7 +3,7 @@
 begin;
 \ir _helpers.psql
 
-select plan(48);
+select plan(49);
 
 select tests.reset_members();
 
@@ -55,8 +55,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select claim_item(%L)', gen_random_uuid()),
-  'NOT_CLAIMABLE', 'This item can''t be claimed.',
-  'an unknown item can''t be claimed'
+  'NOT_FOUND', 'This item was deleted.',
+  'claiming an item that was deleted raises NOT_FOUND'
 );
 
 select claim_item(tests.item_id('Giveaways'));
@@ -156,8 +156,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select set_packed(%L, true)', gen_random_uuid()),
-  'NOT_ALLOWED', 'You can''t change this.',
-  'an unknown item can''t be packed'
+  'NOT_FOUND', 'This item was deleted.',
+  'packing an item that was deleted raises NOT_FOUND'
 );
 
 -- ---------------------------------------------------------------------
@@ -226,8 +226,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select move_to_container(%L, %L)', tests.item_id('Lipstick'), gen_random_uuid()),
-  'NOT_A_CONTAINER', 'Pick a bag or box.',
-  'an unknown target is not a bag'
+  'NOT_FOUND', 'This bag or box was deleted.',
+  'moving into a bag that was deleted raises NOT_FOUND'
 );
 
 select tests.throws_error(
@@ -246,8 +246,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select move_to_container(%L, null)', gen_random_uuid()),
-  'NOT_ALLOWED', 'You can''t change this.',
-  'an unknown item can''t be moved'
+  'NOT_FOUND', 'This item was deleted.',
+  'moving an item that was deleted raises NOT_FOUND'
 );
 
 select tests.act_as('Sara');
@@ -279,9 +279,19 @@ select tests.throws_error(
   'no one moves an unclaimed item, not even its owner'
 );
 
--- A claimable item can still sit in its owner's bag if it was put there
--- while personal and then made claimable.
-update item set parent_id = tests.item_id('Mai bag') where id = tests.item_id('Gift box');
+-- The schema trigger enforces the same rule for any write, not just
+-- these functions: a claimable item is only ever in its claimer's bag.
+select tests.throws_error(
+  format('update item set parent_id = %L where id = %L', tests.item_id('Mai bag'), tests.item_id('Gift box')),
+  'NOT_ALLOWED', 'You can''t change this.',
+  'the database keeps a claimed item out of its owner''s bag (ruling)'
+);
+
+select tests.throws_error(
+  format('update item set parent_id = %L where id = %L', tests.item_id('Mai bag'), tests.item_id('Cake topper')),
+  'NOT_ALLOWED', 'You can''t change this.',
+  'the database keeps an unclaimed item out of every bag'
+);
 
 -- ---------------------------------------------------------------------
 -- release_claim
@@ -315,8 +325,8 @@ select tests.throws_error(
 
 select tests.throws_error(
   format('select release_claim(%L)', gen_random_uuid()),
-  'NOT_ALLOWED', 'You can''t change this.',
-  'an unknown item has no claim to release'
+  'NOT_FOUND', 'This item was deleted.',
+  'releasing an item that was deleted raises NOT_FOUND'
 );
 
 select tests.act_as('Sara');
@@ -354,13 +364,6 @@ select release_claim(tests.item_id('Giveaways'));
 select is(
   tests.item_fields(tests.item_id('Giveaways')) ->> 'in', null,
   'releasing a claim takes the item out of my bag'
-);
-
-select release_claim(tests.item_id('Gift box'));
-
-select is(
-  tests.item_fields(tests.item_id('Gift box')) ->> 'in', 'Mai bag',
-  'an item in its owner''s bag stays there when the claimer releases it'
 );
 
 select tests.throws_error(
