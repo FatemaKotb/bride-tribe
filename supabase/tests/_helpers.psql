@@ -92,6 +92,88 @@ language sql as $$
 $$;
 
 -- ---------------------------------------------------------------------
+-- Items, cars, and requests
+-- ---------------------------------------------------------------------
+
+-- The id of the one item with this name (and owner, when names repeat,
+-- as with copies). Fails loudly when there isn't exactly one.
+create function tests.item_id(item_name text, owner_name text default null) returns uuid
+language plpgsql stable as $$
+declare
+  found_id uuid;
+begin
+  select id into strict found_id from item
+  where name = item_name
+    and (owner_name is null or owner_id = tests.member_id(owner_name));
+  return found_id;
+end;
+$$;
+
+-- An item's stored fields, with member and bag names instead of ids.
+create function tests.item_fields(target_id uuid) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'kind',        i.kind,
+    'owner',       (select name from member where id = i.owner_id),
+    'name',        i.name,
+    'emoji',       i.emoji,
+    'description', i.description,
+    'quantity',    i.quantity,
+    'tags',        i.tags,
+    'visibility',  i.visibility,
+    'type',        i.type,
+    'claimed_by',  (select name from member where id = i.claimed_by_id),
+    'in',          (select name from item bag where bag.id = i.parent_id),
+    'packed',      i.is_packed)
+  from item i where i.id = target_id;
+$$;
+
+create function tests.vendor_fields(target_id uuid) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'vendor_name',   vendor_name,
+    'service',       service,
+    'phone',         phone,
+    'address',       address,
+    'expected_time', expected_time,
+    'amount_egp',    amount_egp,
+    'details',       details)
+  from vendor_details where item_id = target_id;
+$$;
+
+-- A car inserted directly, with valid defaults for its trip.
+create function tests.add_car(owner_name text, car_trip trip default 'to_hotel') returns uuid
+language sql as $$
+  insert into car (owner_id, trip, seats, departure_earliest, departure_latest,
+                   home_area, trunk_percent)
+  values (tests.member_id(owner_name), car_trip, 3, '09:00', '10:00',
+          case when car_trip = 'to_hotel' then 'maadi'::area end, 50)
+  returning id;
+$$;
+
+-- A cargo Ask inserted directly, sent by the cargo's owner.
+create function tests.add_cargo_request(
+  target_car_id uuid, target_item_id uuid, request_state request_state default 'pending'
+) returns uuid
+language sql as $$
+  insert into request (car_id, trip, direction, kind, created_by_id, item_id,
+                       state, cancel_reason, pickup_type)
+  select c.id, c.trip, 'ask', 'cargo', coalesce(i.claimed_by_id, i.owner_id), i.id,
+         request_state,
+         case when request_state = 'cancelled' then 'by_sender'::cancel_reason end,
+         'bride_home'
+  from car c, item i
+  where c.id = target_car_id and i.id = target_item_id
+  returning id;
+$$;
+
+-- "state/reason", for example "cancelled/auto", or null once deleted.
+create function tests.request_state(request_id uuid) returns text
+language sql stable as $$
+  select state::text || coalesce('/' || cancel_reason::text, '') from request where id = request_id;
+$$;
+
+-- ---------------------------------------------------------------------
 -- Assertions
 -- ---------------------------------------------------------------------
 
