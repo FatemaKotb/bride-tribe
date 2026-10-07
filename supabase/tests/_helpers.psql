@@ -1,0 +1,118 @@
+-- Shared pgTAP helpers. Every test file includes this (\ir _helpers.psql)
+-- right after `begin`, so everything here is rolled back with the test.
+-- The .psql extension keeps `supabase test db` from running it as a test.
+
+set client_min_messages = warning;
+create extension if not exists pgtap with schema extensions;
+
+create schema tests;
+
+-- ---------------------------------------------------------------------
+-- Members
+-- ---------------------------------------------------------------------
+
+-- Replaces the seeded members with a fixed cast, so tests don't depend
+-- on seed.sql. Call it before creating any other fixtures.
+create function tests.reset_members() returns void
+language sql as $$
+  delete from member;
+  insert into member (name, role) values
+    ('Bride', 'bride'),
+    ('Mai',   'maid_of_honor'),
+    ('Sara',  'bridesmaid'),
+    ('Nour',  'bridesmaid');
+$$;
+
+create function tests.member_id(member_name text) returns uuid
+language sql stable as $$
+  select id from member where name = member_name;
+$$;
+
+-- ---------------------------------------------------------------------
+-- Sessions: who "me" is
+-- ---------------------------------------------------------------------
+
+-- Test sessions by label (a phone, or a member's name for act_as).
+create table tests.session (
+  label        text primary key,
+  auth_user_id uuid not null
+);
+
+-- Makes an existing session the caller by setting the JWT claims.
+create function tests.use_session(session_label text) returns uuid
+language plpgsql as $$
+declare
+  uid uuid;
+begin
+  select auth_user_id into uid from tests.session where label = session_label;
+  if not found then
+    raise exception 'unknown test session: %', session_label;
+  end if;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+  return uid;
+end;
+$$;
+
+-- Starts a Supabase anonymous session that isn't linked to a member yet
+-- (as after signInAnonymously), and makes it the caller.
+create function tests.new_session(session_label text) returns uuid
+language plpgsql as $$
+declare
+  uid uuid := gen_random_uuid();
+begin
+  insert into auth.users (id, aud, role, is_anonymous)
+  values (uid, 'authenticated', 'authenticated', true);
+  insert into tests.session (label, auth_user_id) values (session_label, uid);
+  return tests.use_session(session_label);
+end;
+$$;
+
+-- Acts as a member. The first call creates their session and links it
+-- in member_session; later calls switch back to it.
+create function tests.act_as(member_name text) returns uuid
+language plpgsql as $$
+declare
+  uid uuid;
+begin
+  if exists (select 1 from tests.session where label = member_name) then
+    return tests.use_session(member_name);
+  end if;
+  uid := tests.new_session(member_name);
+  insert into member_session (auth_user_id, member_id)
+  values (uid, tests.member_id(member_name));
+  return uid;
+end;
+$$;
+
+-- No Supabase session at all.
+create function tests.no_session() returns void
+language sql as $$
+  select set_config('request.jwt.claims', '', true);
+$$;
+
+-- ---------------------------------------------------------------------
+-- Assertions
+-- ---------------------------------------------------------------------
+
+-- Passes when `sql` raises the contract error `code` (the hint) with the
+-- user-facing `message`. The failed statement's changes are rolled back.
+create function tests.throws_error(sql text, code text, message text, description text)
+returns text
+language plpgsql as $$
+declare
+  got_code    text;
+  got_message text;
+begin
+  begin
+    execute sql;
+  exception when others then
+    get stacked diagnostics got_code = pg_exception_hint, got_message = message_text;
+    return is(
+      coalesce(nullif(got_code, ''), '<no hint>') || ': ' || got_message,
+      code || ': ' || message,
+      description);
+  end;
+  return ok(false, description) || e'\n' || diag('    no error was raised');
+end;
+$$;
