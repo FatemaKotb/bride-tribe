@@ -10,7 +10,7 @@ and every button calls the function the backend names.
 
    ```bash
    npx supabase start
-   npx supabase db reset   # optional: back to the four test members
+   npx supabase db reset   # optional: just the bridal party, no items or cars
    ```
 
 2. Create `web/.env.local` from `web/.env.example`. The values come from
@@ -24,7 +24,7 @@ and every button calls the function the backend names.
    npm run dev
    ```
 
-   Open <http://localhost:5173> and pick a test member.
+   Open <http://localhost:5173> and pick a name.
 
 ## Try it on a phone
 
