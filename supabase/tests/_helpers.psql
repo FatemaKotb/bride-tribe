@@ -218,6 +218,45 @@ language sql as $$
   returning id;
 $$;
 
+-- The one request on this car about this passenger or item (by name),
+-- optionally in a given state.
+create function tests.request_on(
+  target_car_id uuid, subject_name text, in_state request_state default null
+) returns uuid
+language plpgsql stable as $$
+declare
+  found_id uuid;
+begin
+  select r.id into strict found_id
+  from request r
+  left join member p on p.id = r.passenger_id
+  left join item i on i.id = r.item_id
+  where r.car_id = target_car_id
+    and coalesce(p.name, i.name) = subject_name
+    and (in_state is null or r.state = in_state);
+  return found_id;
+end;
+$$;
+
+-- A request's stored fields, with names instead of ids.
+create function tests.request_fields(request_id uuid) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'car',            (select m.name from car c join member m on m.id = c.owner_id where c.id = r.car_id),
+    'trip',           r.trip,
+    'direction',      r.direction,
+    'kind',           r.kind,
+    'sent_by',        (select name from member where id = r.created_by_id),
+    'passenger',      (select name from member where id = r.passenger_id),
+    'item',           (select name from item where id = r.item_id),
+    'state',          r.state,
+    'cancel_reason',  r.cancel_reason,
+    'pickup_type',    r.pickup_type,
+    'pickup_address', r.pickup_address,
+    'ready_at',       r.ready_at)
+  from request r where r.id = request_id;
+$$;
+
 -- "state/reason", for example "cancelled/auto", or null once deleted.
 create function tests.request_state(request_id uuid) returns text
 language sql stable as $$
