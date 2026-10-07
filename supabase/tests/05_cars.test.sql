@@ -3,7 +3,7 @@
 begin;
 \ir _helpers.psql
 
-select plan(40);
+select plan(43);
 
 select tests.reset_members();
 insert into member (name, role) values ('Rana', 'bridesmaid');
@@ -59,7 +59,8 @@ select tests.throws_error(
 );
 
 select register_car(trip => 'hotel_to_venue', seats => 2,
-                    departure_earliest => '18:00', departure_latest => '18:30');
+                    departure_earliest => '18:00', departure_latest => '18:30',
+                    trunk_percent => 0);
 
 select is(
   tests.car_fields(tests.car_id('Sara', 'hotel_to_venue')),
@@ -68,7 +69,7 @@ select is(
     "home_area": null, "home_area_other": null,
     "minutes_to_bride": null, "minutes_to_hotel": null, "trunk_percent": 0,
     "notes": null, "withdrawn": false, "stops": [], "dropoff": []}',
-  'a member registers separately for each trip (BR-13); trunk space not chosen is 0%'
+  'a member registers separately for each trip (BR-13)'
 );
 
 select register_car(
@@ -124,6 +125,20 @@ select tests.throws_error(
 );
 
 select tests.throws_error(
+  $$ select register_car(trip => 'hotel_to_venue', seats => 2, departure_earliest => '19:00',
+                         departure_latest => '18:00', trunk_percent => 0) $$,
+  'INVALID_WINDOW', 'The earliest time must be before the latest time.',
+  'only a Return home window can cross midnight'
+);
+
+select throws_ok(
+  $$ select register_car(trip => 'hotel_to_venue', seats => 2, departure_earliest => '18:00',
+                         departure_latest => '18:30') $$,
+  '23502', null,
+  'trunk space is required (ruling): leaving it out fails like any required field'
+);
+
+select tests.throws_error(
   $$ select register_car(trip => 'to_hotel', seats => 2, departure_earliest => '09:00',
                          departure_latest => '10:00', home_area => 'other', home_area_other => ' ') $$,
   'OTHER_AREA_REQUIRED', 'Please type the area.',
@@ -168,7 +183,7 @@ select tests.act_as('Nour');
 
 select register_car(
   trip => 'to_hotel', seats => 0, departure_earliest => '08:00', departure_latest => '08:00',
-  home_area => 'other', home_area_other => ' Nasr City '
+  home_area => 'other', home_area_other => ' Nasr City ', trunk_percent => 100
 );
 
 select is(
@@ -247,7 +262,7 @@ select tests.throws_error(
 select update_car(
   tests.car_id('Sara', 'return_home'), seats => 4,
   departure_earliest => '23:00', departure_latest => '23:45',
-  dropoff_areas => array['october']::area[]
+  dropoff_areas => array['october']::area[], trunk_percent => 100
 );
 
 select is(
@@ -285,7 +300,8 @@ select tests.throws_error(
 
 select update_car(
   tests.car_id('Sara'), seats => 2,
-  departure_earliest => '08:30', departure_latest => '09:30', home_area => 'maadi'
+  departure_earliest => '08:30', departure_latest => '09:30', home_area => 'maadi',
+  trunk_percent => 25
 );
 
 select is(
@@ -372,11 +388,19 @@ select tests.throws_error(
 );
 
 select register_car(trip => 'return_home', seats => 2,
-                    departure_earliest => '00:00', departure_latest => '00:30');
+                    departure_earliest => '23:30', departure_latest => '00:30',
+                    trunk_percent => 50);
 
 select isnt(
   tests.car_id('Sara', 'return_home'), :'return_car'::uuid,
   'withdrawing frees the trip, so I can register a new car on it'
+);
+
+select is(
+  (select departure_earliest || '-' || departure_latest from car
+   where id = tests.car_id('Sara', 'return_home')),
+  '23:30:00-00:30:00',
+  'a Return home window can cross midnight (ruling)'
 );
 
 select * from finish();

@@ -222,7 +222,9 @@ create table car (
 
   -- Target of the composite foreign keys from request, car_stop, and car_dropoff_area.
   constraint car_id_trip_unique unique (id, trip),
-  constraint car_window check (departure_earliest <= departure_latest),
+  -- A Return home window can cross midnight: 23:30 to 00:30 ends the next
+  -- day (ruling 2026-10-08).
+  constraint car_window check (trip = 'return_home' or departure_earliest <= departure_latest),
   -- BR-14: home area and travel times exist only for the To the hotel trip.
   constraint car_to_hotel_fields check (
     (trip = 'to_hotel' and home_area is not null)

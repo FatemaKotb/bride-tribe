@@ -6,6 +6,9 @@
 --   so its pending passenger requests are cancelled (2026-10-07).
 -- - Negative seats or travel minutes raise INVALID_NUMBER (2026-10-08).
 -- - An unknown car id raises NOT_FOUND (2026-10-08).
+-- - A Return home departure window can cross midnight (2026-10-08).
+-- - Trunk space is required, like seats and the departure window: the
+--   form marks it required and the column is NOT NULL (2026-10-08).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -98,7 +101,8 @@ begin
       hint    = 'INVALID_NUMBER';
   end if;
 
-  if earliest > latest then
+  -- A Return home window can cross midnight (ruling 2026-10-08).
+  if earliest > latest and car_trip <> 'return_home' then
     raise exception using
       message = 'The earliest time must be before the latest time.',
       hint    = 'INVALID_WINDOW';
@@ -154,7 +158,7 @@ revoke all on function
 
 -- "I'm coming with my car." The UI sends the car form's context (trip)
 -- and its visible fields; fields hidden for this trip arrive as their
--- defaults. Trunk space not chosen means nothing is guaranteed (0%).
+-- defaults.
 create function register_car(
   trip               trip,
   seats              int    default null,
@@ -167,7 +171,7 @@ create function register_car(
   stops              jsonb  default '[]',
   dropoff_areas      area[] default '{}',
   dropoff_area_other text   default null,
-  trunk_percent      int    default 0,
+  trunk_percent      int    default null,
   notes              text   default null
 ) returns void
 language plpgsql security definer set search_path = public as $$
@@ -199,7 +203,7 @@ begin
     -- The "other" text is kept only for the Other area.
     case when register_car.home_area = 'other' then clean_text(register_car.home_area_other) end,
     register_car.minutes_to_bride, register_car.minutes_to_hotel,
-    coalesce(register_car.trunk_percent, 0),
+    register_car.trunk_percent,
     clean_text(register_car.notes)
   )
   returning id into new_id;
@@ -224,7 +228,7 @@ create function update_car(
   stops              jsonb  default '[]',
   dropoff_areas      area[] default '{}',
   dropoff_area_other text   default null,
-  trunk_percent      int    default 0,
+  trunk_percent      int    default null,
   notes              text   default null
 ) returns void
 language plpgsql security definer set search_path = public as $$
@@ -269,7 +273,7 @@ begin
                               then clean_text(update_car.home_area_other) end,
     minutes_to_bride   = update_car.minutes_to_bride,
     minutes_to_hotel   = update_car.minutes_to_hotel,
-    trunk_percent      = coalesce(update_car.trunk_percent, 0),
+    trunk_percent      = update_car.trunk_percent,
     notes              = clean_text(update_car.notes)
   where id = target.id;
 
