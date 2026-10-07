@@ -3,7 +3,7 @@
 begin;
 \ir _helpers.psql
 
-select plan(46);
+select plan(48);
 
 select tests.reset_members();
 
@@ -260,12 +260,28 @@ select is(
 
 select claim_item(tests.item_id('Gift box'));
 select tests.act_as('Mai');
-select move_to_container(tests.item_id('Gift box'), tests.item_id('Mai bag'));
 
-select is(
-  tests.item_fields(tests.item_id('Gift box')) ->> 'in', 'Mai bag',
-  'the owner can put an item someone else claimed in their own bag (ERD)'
+select tests.throws_error(
+  format('select move_to_container(%L, %L)', tests.item_id('Gift box'), tests.item_id('Mai bag')),
+  'NOT_ALLOWED', 'You can''t change this.',
+  'only the claimer moves a claimed item, not its owner (ruling)'
 );
+
+select tests.throws_error(
+  format('select move_to_container(%L, null)', tests.item_id('Giveaways')),
+  'NOT_ALLOWED', 'You can''t change this.',
+  'the owner can''t take a claimed item out of the claimer''s bag'
+);
+
+select tests.throws_error(
+  format('select move_to_container(%L, %L)', tests.item_id('Cake topper'), tests.item_id('Mai bag')),
+  'NOT_ALLOWED', 'You can''t change this.',
+  'no one moves an unclaimed item, not even its owner'
+);
+
+-- A claimable item can still sit in its owner's bag if it was put there
+-- while personal and then made claimable.
+update item set parent_id = tests.item_id('Mai bag') where id = tests.item_id('Gift box');
 
 -- ---------------------------------------------------------------------
 -- release_claim

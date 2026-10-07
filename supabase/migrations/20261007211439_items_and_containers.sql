@@ -8,6 +8,8 @@
 -- - Out-of-range numbers raise INVALID_NUMBER, a code added to the
 --   contract's list (2026-10-08).
 -- - Deleting an item deletes its declined cargo requests (2026-10-08).
+-- - Only the claimer moves a claimed item between bags, never its owner
+--   (2026-10-08; narrower than the contract's move_to_container).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -128,20 +130,20 @@ language sql set search_path = public as $$
     and state in ('pending', 'confirmed');
 $$;
 
--- BR-09: the owner packs personal items and containers, and the claimer
--- packs claimable items.
-create function can_pack(target item, me uuid) returns boolean
+-- BR-24: the cargo's owner is the creator of a personal item or a
+-- container, and the claimer of a claimable item (null while unclaimed).
+-- The same member packs it (BR-09) and moves it between bags (ruling
+-- 2026-10-08).
+create function cargo_owner(target item) returns uuid
 language sql immutable set search_path = public as $$
-  select coalesce(
-    case when target.type = 'claimable' then target.claimed_by_id = me
-         else target.owner_id = me end,
-    false);
+  select case when target.type = 'claimable' then target.claimed_by_id
+              else target.owner_id end;
 $$;
 
 revoke all on function
   clean_text(text), clean_tags(text[]), vendor_given(jsonb),
   check_item_fields(text, int, item_type, jsonb), save_vendor_details(uuid, jsonb),
-  cancel_cargo_requests(uuid), can_pack(item, uuid)
+  cancel_cargo_requests(uuid), cargo_owner(item)
   from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------
@@ -397,7 +399,7 @@ declare
   target item%rowtype;
 begin
   select * into target from item where id = set_packed.item_id for update;
-  if not found or not can_pack(target, me) then
+  if not found or cargo_owner(target) is distinct from me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
@@ -407,7 +409,10 @@ begin
 end;
 $$;
 
--- container_id null takes the item out of its bag.
+-- container_id null takes the item out of its bag. Only the cargo's
+-- owner moves an item, so a claimable item is moved by its claimer and
+-- never by its owner (ruling 2026-10-08, narrower than the contract's
+-- "mine or claimed by me").
 create function move_to_container(item_id uuid, container_id uuid default null) returns void
 language plpgsql security definer set search_path = public as $$
 declare
@@ -416,7 +421,7 @@ declare
   bag    item%rowtype;
 begin
   select * into target from item where id = move_to_container.item_id for update;
-  if not found or (target.owner_id <> me and target.claimed_by_id is distinct from me) then
+  if not found or cargo_owner(target) is distinct from me then
     raise exception using
       message = 'You can''t change this.',
       hint    = 'NOT_ALLOWED';
