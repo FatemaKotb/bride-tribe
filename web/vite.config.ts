@@ -14,7 +14,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['apple-touch-icon-180x180.png'],
+      includeAssets: ['apple-touch-icon.png'],
       manifest: {
         name: 'Bride Tribe',
         short_name: 'Bride Tribe',
@@ -25,9 +25,9 @@ export default defineConfig({
         start_url: '.',
         scope: '.',
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       // Cache the app shell, and the Google Fonts it uses, so it opens on a

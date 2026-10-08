@@ -28,7 +28,7 @@ export function SignIn() {
   return (
     <Container size="xs" py="xl">
       <Stack align="center" gap={0} mb="lg">
-        <Image src="./pwa-192x192.png" alt="" w={64} h={64} />
+        <Image src="./icon-192.png" alt="" w={64} h={64} />
         <Title order={1} ff={BRAND_FONT} fw={400} fz={52} c="lavender.6">
           Bride Tribe
         </Title>

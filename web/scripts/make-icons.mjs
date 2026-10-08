@@ -1,5 +1,6 @@
-// Draws the app icons (a white heart on a lavender gradient) as PNGs in
-// public/. Uses only Node's zlib, so no image library is needed.
+// Draws the app icons (two linked wedding rings in white on a lavender
+// gradient) as PNGs in public/. Uses only Node's zlib, so no image
+// library is needed.
 // Run with: node scripts/make-icons.mjs
 import { writeFileSync } from 'node:fs';
 import { deflateSync, crc32 } from 'node:zlib';
@@ -8,40 +9,77 @@ import { deflateSync, crc32 } from 'node:zlib';
 const TOP = [0xb6, 0x9b, 0xe2];
 const BOTTOM = [0x7c, 0x5d, 0xbd];
 const WHITE = [0xff, 0xff, 0xff];
-const SAMPLES = 4; // supersampling per axis, for smooth edges
+const SAMPLES = 5; // supersampling per axis, for smooth edges
 
-// The heart curve (x² + y² − 1)³ − x²y³ ≤ 0 spans about x ∈ [-1.14, 1.14],
-// y ∈ [-1, 1.25].
-function inHeart(x, y) {
-  const a = x * x + y * y - 1;
-  return a * a * a - x * x * y * y * y <= 0;
+// The rings, as shares of the drawing's width: each ring's radius (to the
+// middle of its band), half its band's thickness, how far each centre sits
+// from the middle, and the gap that shows one ring passing over the other.
+const RADIUS = 0.295;
+const HALF_BAND = 0.04;
+const OFFSET = 0.165;
+const GAP = 0.03;
+
+// A diamond sits on top of the left ring, like an engagement ring: a
+// flat-topped crown over a pointed base set into the band. Its widest
+// line (the girdle) is GIRDLE_V; sizes are half-widths and heights.
+const GEM_WIDTH = 0.1;
+const GEM_TABLE = 0.055;
+const GEM_CROWN = 0.05;
+const GEM_BASE = 0.1;
+const GIRDLE_V = -RADIUS - GEM_BASE; // the point reaches the band's middle
+
+function inGem(u, v) {
+  const gu = Math.abs(u + OFFSET);
+  const gv = v - GIRDLE_V;
+  if (gv < -GEM_CROWN || gv > GEM_BASE) return false;
+  const halfWidth = gv < 0
+    ? GEM_TABLE + (GEM_WIDTH - GEM_TABLE) * (gv + GEM_CROWN) / GEM_CROWN
+    : GEM_WIDTH * (1 - gv / GEM_BASE);
+  return gu <= halfWidth;
 }
 
-// heartSize is the heart's width as a share of the icon; corner is the
+// The drawing is taller at the top because of the diamond; this shift
+// centres it in the icon.
+const LIFT = (GIRDLE_V - GEM_CROWN + RADIUS + HALF_BAND) / 2;
+
+// How far (u, v) is from the middle of the band of the ring centred at cx.
+const fromBand = (u, v, cx) => Math.abs(Math.hypot(u - cx, v) - RADIUS);
+
+// True where the rings are white. They link: the left ring passes over the
+// right at the top and under it at the bottom, shown by a gap cut into the
+// lower ring beside the upper one.
+function inRings(u, rawV) {
+  const v = rawV + LIFT;
+  if (inGem(u, v)) return true;
+  const left = fromBand(u, v, -OFFSET);
+  const right = fromBand(u, v, OFFSET);
+  const [over, under] = v < 0 ? [left, right] : [right, left];
+  if (over <= HALF_BAND) return true;
+  return under <= HALF_BAND && over > HALF_BAND + GAP;
+}
+
+// rings is the drawing's width as a share of the icon; corner is the
 // background's corner radius as a share (0 for a full square).
-function draw(size, heartSize, corner) {
+function draw(size, rings, corner) {
   const pixels = Buffer.alloc(size * size * 4);
-  const scale = 2.28 / (heartSize * size); // curve units per pixel
+  const scale = 1 / (rings * size); // drawing units per pixel
   const radius = corner * size;
 
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
-      let bg = 0, heart = 0;
+      let bg = 0, ink = 0;
       for (let sy = 0; sy < SAMPLES; sy++) {
         for (let sx = 0; sx < SAMPLES; sx++) {
           const x = px + (sx + 0.5) / SAMPLES;
           const y = py + (sy + 0.5) / SAMPLES;
           if (!insideRoundedSquare(x, y, size, radius)) continue;
           bg++;
-          // Centre the heart, nudged down so it looks balanced.
-          const hx = (x - size / 2) * scale;
-          const hy = (size / 2 - y) * scale + 0.12;
-          if (inHeart(hx, hy)) heart++;
+          if (inRings((x - size / 2) * scale, (y - size / 2) * scale)) ink++;
         }
       }
       const total = SAMPLES * SAMPLES;
       const i = (py * size + px) * 4;
-      const mix = bg ? heart / bg : 0;
+      const mix = bg ? ink / bg : 0;
       const down = py / (size - 1);
       for (let c = 0; c < 3; c++) {
         const background = TOP[c] * (1 - down) + BOTTOM[c] * down;
@@ -87,11 +125,12 @@ function chunk(type, data) {
   return Buffer.concat([length, body, crc]);
 }
 
+// The rings span 2 × (OFFSET + RADIUS + HALF_BAND) = 1 drawing unit wide.
 const out = new URL('../public/', import.meta.url);
-writeFileSync(new URL('pwa-192x192.png', out), draw(192, 0.62, 0.22));
-writeFileSync(new URL('pwa-512x512.png', out), draw(512, 0.62, 0.22));
-// Maskable icons may be cropped to a circle, so the heart stays in the
-// middle 60% and the background fills the square.
-writeFileSync(new URL('maskable-icon-512x512.png', out), draw(512, 0.46, 0));
+writeFileSync(new URL('icon-192.png', out), draw(192, 0.64, 0.22));
+writeFileSync(new URL('icon-512.png', out), draw(512, 0.64, 0.22));
+// Maskable icons may be cropped to a circle, so the rings stay inside the
+// middle 80% circle and the background fills the square.
+writeFileSync(new URL('icon-maskable-512.png', out), draw(512, 0.5, 0));
 // iOS rounds the corners itself.
-writeFileSync(new URL('apple-touch-icon-180x180.png', out), draw(180, 0.58, 0));
+writeFileSync(new URL('apple-touch-icon.png', out), draw(180, 0.62, 0));
