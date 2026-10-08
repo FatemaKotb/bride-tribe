@@ -22,20 +22,37 @@ const GAP = 0.03;
 // A diamond sits on top of the left ring, like an engagement ring: a
 // flat-topped crown over a pointed base set into the band. Its widest
 // line (the girdle) is GIRDLE_V; sizes are half-widths and heights.
-const GEM_WIDTH = 0.1;
-const GEM_TABLE = 0.055;
-const GEM_CROWN = 0.05;
-const GEM_BASE = 0.1;
+const GEM_WIDTH = 0.17;
+const GEM_TABLE = 0.095;
+const GEM_CROWN = 0.085;
+const GEM_BASE = 0.17;
 const GIRDLE_V = -RADIUS - GEM_BASE; // the point reaches the band's middle
+const FACET = 0.008; // half the thickness of the facet lines
 
+// Distance from (x, y) to the segment from (ax, ay) to (bx, by).
+function toSegment(x, y, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(x - ax - t * dx, y - ay - t * dy);
+}
+
+// The gem's outline, with its facets cut in as thin lines: the girdle,
+// lines from the table down to the girdle, and lines meeting at the point.
 function inGem(u, v) {
-  const gu = Math.abs(u + OFFSET);
+  const gu = Math.abs(u + OFFSET); // the gem is symmetric
   const gv = v - GIRDLE_V;
   if (gv < -GEM_CROWN || gv > GEM_BASE) return false;
   const halfWidth = gv < 0
     ? GEM_TABLE + (GEM_WIDTH - GEM_TABLE) * (gv + GEM_CROWN) / GEM_CROWN
     : GEM_WIDTH * (1 - gv / GEM_BASE);
-  return gu <= halfWidth;
+  if (gu > halfWidth) return false;
+  const mid = GEM_WIDTH * 0.42; // where the facets meet the girdle
+  const facets = [
+    Math.abs(gv),                                                 // girdle
+    toSegment(gu, gv, GEM_TABLE * 0.45, -GEM_CROWN, mid, 0),      // crown
+    toSegment(gu, gv, mid, 0, 0, GEM_BASE),                       // base
+  ];
+  return Math.min(...facets) > FACET;
 }
 
 // The drawing is taller at the top because of the diamond; this shift
