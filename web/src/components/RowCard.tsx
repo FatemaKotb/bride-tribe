@@ -1,15 +1,27 @@
-import { Badge, Card, Group, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Badge, Card, Divider, Group, Paper, Stack, Text, ThemeIcon, UnstyledButton } from '@mantine/core';
 import { useNavigate } from 'react-router';
 import type { Row, Tone } from '../contract';
 import { detailPath } from '../hooks';
 import { ActionButton } from './ActionButton';
 
 const TONE_COLORS: Record<Tone, string> = {
-  neutral: 'gray',
-  success: 'green',
+  neutral: 'lavender',
+  success: 'teal',
   warning: 'orange',
   danger: 'red',
 };
+
+// The row's emoji in a soft circle, or the title's first letter when it
+// has none, so rows line up.
+function RowIcon({ row }: { row: Row }) {
+  return (
+    <ThemeIcon variant="light" radius="xl" size={42} style={{ flexShrink: 0 }}>
+      <Text fz={row.emoji ? 22 : 18} fw={700} c="lavender.7" lh={1}>
+        {row.emoji ?? row.title?.charAt(0).toUpperCase()}
+      </Text>
+    </ThemeIcon>
+  );
+}
 
 // Renders a Row (contract Section 1). Tapping it opens its detail view, if
 // it names one.
@@ -31,13 +43,9 @@ export function RowCard({ row, onDone }: { row: Row; onDone: () => void }) {
 
   const body = (
     <Group gap="sm" wrap="nowrap" align="flex-start">
-      {row.emoji && (
-        <Text fz={24} lh={1.2}>
-          {row.emoji}
-        </Text>
-      )}
+      <RowIcon row={row} />
       <Stack gap={4} miw={0} style={{ flex: 1 }}>
-        <Text fw={500}>{row.title}</Text>
+        <Text fw={700}>{row.title}</Text>
         {row.subtitle && (
           <Text size="sm" c="dimmed">
             {row.subtitle}
@@ -45,8 +53,8 @@ export function RowCard({ row, onDone }: { row: Row; onDone: () => void }) {
         )}
         {row.badges.length > 0 && (
           <Group gap={6}>
-            {row.badges.map((badge) => (
-              <Badge key={badge.label} color={TONE_COLORS[badge.tone]} variant="light" tt="none">
+            {row.badges.map((badge, i) => (
+              <Badge key={i} color={TONE_COLORS[badge.tone]} variant="light" tt="none">
                 {badge.label}
               </Badge>
             ))}
@@ -57,7 +65,7 @@ export function RowCard({ row, onDone }: { row: Row; onDone: () => void }) {
   );
 
   return (
-    <Card withBorder padding="sm" radius="md">
+    <Card withBorder padding="sm">
       <Stack gap="sm">
         {open ? (
           <UnstyledButton onClick={() => void navigate(detailPath(open))}>{body}</UnstyledButton>
@@ -73,11 +81,42 @@ export function RowCard({ row, onDone }: { row: Row; onDone: () => void }) {
 export function RowList({ rows, empty, onDone }: { rows: Row[]; empty?: string; onDone: () => void }) {
   if (rows.length === 0) {
     return empty ? (
-      <Text c="dimmed" size="sm">
-        {empty}
-      </Text>
+      <Paper withBorder p="md">
+        <Text c="dimmed" size="sm" ta="center">
+          {empty}
+        </Text>
+      </Paper>
     ) : null;
   }
+  // Rows with nothing to tap, such as the status board, share one card.
+  if (rows.every((row) => !row.open && row.actions.length === 0)) {
+    return (
+      <Paper withBorder shadow="xs" px="sm" py={4}>
+        {rows.map((row, i) => (
+          <Stack key={row.id} gap={0}>
+            {i > 0 && <Divider color="lavender.1" />}
+            <Group gap="sm" wrap="nowrap" py={8}>
+              <RowIcon row={row} />
+              <Stack gap={0} miw={0} style={{ flex: 1 }}>
+                <Text fw={700}>{row.title}</Text>
+                {row.subtitle && (
+                  <Text size="sm" c="dimmed">
+                    {row.subtitle}
+                  </Text>
+                )}
+              </Stack>
+              {row.badges.map((badge, j) => (
+                <Badge key={j} color={TONE_COLORS[badge.tone]} variant="light" tt="none">
+                  {badge.label}
+                </Badge>
+              ))}
+            </Group>
+          </Stack>
+        ))}
+      </Paper>
+    );
+  }
+
   return (
     <Stack gap="xs">
       {rows.map((row) => (

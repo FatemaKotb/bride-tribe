@@ -34,8 +34,8 @@ export function App() {
   if (state.status === 'signed_out') return <SignIn />;
 
   return (
-    <AppShell header={{ height: 60 }} footer={{ height: 60 }} padding="md">
-      <AppShell.Header>
+    <AppShell header={{ height: 64 }} footer={{ height: 64 }} padding="md">
+      <AppShell.Header bg="lavender.6" withBorder={false}>
         <Header />
       </AppShell.Header>
       <AppShell.Main>

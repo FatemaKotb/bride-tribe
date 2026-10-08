@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Stack, Title } from '@mantine/core';
+import { Alert, Button, Group, Paper, Stack, Title } from '@mantine/core';
 import { useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { call } from '../api';
@@ -66,7 +66,11 @@ function FormBody({ form, onDone }: { form: FormSchema; onDone: () => void }) {
     <form onSubmit={(event) => void submit(event)} noValidate>
       <Stack gap="md">
         <Title order={2}>{form.title}</Title>
-        <Fields fields={form.fields} values={values} errors={errors} onChange={setValues} />
+        <Paper withBorder p="md" shadow="xs">
+          <Stack gap="md">
+            <Fields fields={form.fields} values={values} errors={errors} onChange={setValues} />
+          </Stack>
+        </Paper>
         {failure && <Alert color="red">{failure}</Alert>}
         <Group justify="flex-end">
           <Button variant="default" onClick={onDone}>

@@ -8,7 +8,7 @@ import { showToast } from '../toast';
 
 const STYLES: Record<Action['style'], ButtonProps> = {
   primary: { variant: 'filled' },
-  secondary: { variant: 'default' },
+  secondary: { variant: 'light' },
   danger: { variant: 'light', color: 'red' },
 };
 

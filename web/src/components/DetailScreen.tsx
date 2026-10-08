@@ -1,4 +1,4 @@
-import { Button, Group, Stack, Text, Title } from '@mantine/core';
+import { Button, Group, Paper, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useParams } from 'react-router';
 import type { DetailResponse, Section } from '../contract';
 import { useBack, useLoad } from '../hooks';
@@ -30,11 +30,13 @@ function DetailView({ detail, id }: { detail: string; id: string }) {
       <LoadState loaded={loaded}>
         {(view) => (
           <Stack gap="lg">
-            <Group gap="sm" wrap="nowrap" align="flex-start">
+            <Group gap="md" wrap="nowrap" align="center">
               {view.emoji && (
-                <Text fz={32} lh={1.1}>
-                  {view.emoji}
-                </Text>
+                <ThemeIcon variant="light" radius="xl" size={60} style={{ flexShrink: 0 }}>
+                  <Text fz={32} lh={1}>
+                    {view.emoji}
+                  </Text>
+                </ThemeIcon>
               )}
               <Stack gap={2} miw={0}>
                 <Title order={2}>{view.title}</Title>
@@ -57,18 +59,20 @@ function DetailSection({ section, onDone }: { section: Section; onDone: () => vo
     <Stack gap="xs">
       <Title order={4}>{section.title}</Title>
       {section.fields ? (
-        <Stack gap={6}>
-          {section.fields.map((pair) => (
-            <Group key={pair.label} gap="sm" wrap="nowrap" align="flex-start">
-              <Text size="sm" c="dimmed" w={110} style={{ flexShrink: 0 }}>
-                {pair.label}
-              </Text>
-              <Text size="sm" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                {pair.value}
-              </Text>
-            </Group>
-          ))}
-        </Stack>
+        <Paper withBorder p="md" shadow="xs">
+          <Stack gap={8}>
+            {section.fields.map((pair) => (
+              <Group key={pair.label} gap="sm" wrap="nowrap" align="flex-start">
+                <Text size="sm" c="dimmed" w={110} style={{ flexShrink: 0 }}>
+                  {pair.label}
+                </Text>
+                <Text size="sm" fw={600} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                  {pair.value}
+                </Text>
+              </Group>
+            ))}
+          </Stack>
+        </Paper>
       ) : (
         <RowList rows={section.rows} empty={section.empty_message} onDone={onDone} />
       )}

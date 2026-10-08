@@ -95,16 +95,21 @@ function FilterChips({ filter, onChoose }: { filter: Filter; onChoose: (value: s
         {filter.label}
       </Text>
       <Group gap={6} style={{ flex: 1 }}>
-        {filter.options.map((option) => (
-          <Chip
-            key={option.value}
-            size="sm"
-            checked={filter.selected.includes(option.value)}
-            onChange={() => onChoose(option.value)}
-          >
-            {option.emoji ? `${option.emoji} ${option.label}` : option.label}
-          </Chip>
-        ))}
+        {filter.options.map((option) => {
+          // Solid when chosen, outlined otherwise, so the choice stands out.
+          const checked = filter.selected.includes(option.value);
+          return (
+            <Chip
+              key={option.value}
+              size="sm"
+              variant={checked ? 'filled' : 'outline'}
+              checked={checked}
+              onChange={() => onChoose(option.value)}
+            >
+              {option.emoji ? `${option.emoji} ${option.label}` : option.label}
+            </Chip>
+          );
+        })}
       </Group>
     </Group>
   );

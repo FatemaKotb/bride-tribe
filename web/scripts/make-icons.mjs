@@ -1,10 +1,12 @@
-// Draws the app icons (a white heart on the theme color) as PNGs in
+// Draws the app icons (a white heart on a lavender gradient) as PNGs in
 // public/. Uses only Node's zlib, so no image library is needed.
 // Run with: node scripts/make-icons.mjs
 import { writeFileSync } from 'node:fs';
 import { deflateSync, crc32 } from 'node:zlib';
 
-const THEME = [0x22, 0x8b, 0xe6]; // Mantine's default primary color, blue[6]
+// lavender[4] at the top to lavender[6] at the bottom (src/theme.ts).
+const TOP = [0xb6, 0x9b, 0xe2];
+const BOTTOM = [0x7c, 0x5d, 0xbd];
 const WHITE = [0xff, 0xff, 0xff];
 const SAMPLES = 4; // supersampling per axis, for smooth edges
 
@@ -40,7 +42,11 @@ function draw(size, heartSize, corner) {
       const total = SAMPLES * SAMPLES;
       const i = (py * size + px) * 4;
       const mix = bg ? heart / bg : 0;
-      for (let c = 0; c < 3; c++) pixels[i + c] = Math.round(THEME[c] * (1 - mix) + WHITE[c] * mix);
+      const down = py / (size - 1);
+      for (let c = 0; c < 3; c++) {
+        const background = TOP[c] * (1 - down) + BOTTOM[c] * down;
+        pixels[i + c] = Math.round(background * (1 - mix) + WHITE[c] * mix);
+      }
       pixels[i + 3] = Math.round((bg / total) * 255);
     }
   }
