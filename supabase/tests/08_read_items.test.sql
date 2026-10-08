@@ -4,7 +4,7 @@ begin;
 \ir _helpers.psql
 \ir _read_helpers.psql
 
-select plan(60);
+select plan(63);
 
 select tests.wedding();
 
@@ -364,6 +364,46 @@ select is(
   tests.pairs_text(tests.section(get_item(tests.item_id('Hair clip'))::jsonb, 'Details')),
   'Added by: Sara; Visibility: Private; Type: Personal; In: Blue bag; Packing: Not packed',
   'my item shows its bag'
+);
+
+-- Who has it (ruling 2026-10-08).
+select is(
+  (select string_agg(s ->> 'title', ', ')
+   from jsonb_array_elements(get_item(tests.item_id('Hair clip'))::jsonb -> 'sections') s),
+  'Details, Cargo requests',
+  'an item no one else has shows no Who has it'
+);
+
+select tests.act_as('Nour');
+select create_item(name => 'Perfume (Dior)', description => 'The small bottle', visibility => 'shared',
+                   copy_of => tests.item_id('Perfume', 'Mai'));
+select tests.item_id('Perfume (Dior)') as dior_id \gset
+update item set created_at = created_at + interval '2 minutes' where id = :'dior_id';
+select tests.act_as('Rana');
+
+select is(
+  (select jsonb_agg(r - 'id' - 'emoji' - 'actions' order by n)
+   from jsonb_array_elements(
+          tests.section(get_item(tests.item_id('Perfume', 'Mai'))::jsonb, 'Who has it') -> 'rows')
+        with ordinality as t (r, n)),
+  jsonb_build_array(
+    jsonb_build_object('title', 'Mai 🎀', 'subtitle', null,
+                       'badges', '[{"label": "This one", "tone": "neutral"}]'::jsonb, 'open', null),
+    jsonb_build_object('title', 'Nour', 'subtitle', 'Perfume (Dior) · The small bottle', 'badges', '[]'::jsonb,
+                       'open', jsonb_build_object('detail', 'item', 'id', :'dior_id'::uuid))),
+  'Who has it lists each shared copy in the order added; the others open their own copy, named when it differs'
+);
+
+select tests.act_as('Nour');
+select update_item(:'dior_id', name => 'Perfume (Dior)', description => 'The small bottle',
+                   type => 'personal', visibility => 'private');
+
+select is(
+  (select string_agg(s ->> 'title', ', ')
+   from jsonb_array_elements(get_item(tests.item_id('Perfume', 'Mai'))::jsonb -> 'sections') s)
+    || ' / ' || tests.titles(tests.section(get_item(:'dior_id')::jsonb, 'Who has it')),
+  'Details, Cargo requests / Mai 🎀',
+  'a copy made private leaves the list, and its owner still sees who else has it (BR-07a)'
 );
 
 select tests.act_as('Nour');
