@@ -10,7 +10,7 @@ select plan(5);
 create temp table contract_function (name text primary key);
 insert into contract_function (name) values
   ('list_members_for_login'), ('sign_in'), ('sign_out'),
-  ('get_home'), ('list_items'), ('get_item'), ('list_cars'), ('get_car'),
+  ('get_home'), ('list_items'), ('list_bags'), ('get_item'), ('list_cars'), ('get_car'),
   ('list_requests'), ('get_form'),
   ('set_status'), ('clear_attention'),
   ('create_item'), ('update_item'), ('create_container'), ('delete_item'),

@@ -43,6 +43,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/items" element={<ListScreen key="list_items" fn="list_items" />} />
+            <Route path="/bags" element={<ListScreen key="list_bags" fn="list_bags" />} />
             <Route path="/cars" element={<ListScreen key="list_cars" fn="list_cars" />} />
             <Route path="/requests" element={<ListScreen key="list_requests" fn="list_requests" />} />
             <Route path="/form/:name" element={<FormScreen />} />
