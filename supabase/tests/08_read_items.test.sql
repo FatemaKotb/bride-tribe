@@ -173,10 +173,10 @@ select is(
 select set_packed(tests.item_id('Blue bag'), true);
 
 select is(
-  (select r ->> 'subtitle' || ' / ' || (r -> 'actions' -> 0 ->> 'label')
+  (select r ->> 'subtitle' || ' / ' || tests.badges(r) || ' / ' || (r -> 'actions' -> 0 ->> 'label')
    from (select tests.row_titled(list_bags()::jsonb, 'Blue bag') as r) s),
-  '1 item · Packed / Mark unpacked',
-  'a packed bag says so and offers Mark unpacked'
+  '1 item / Private, Packed / Mark unpacked',
+  'a packed bag gets a Packed badge beside its visibility, and offers Mark unpacked (ruling 2026-10-08)'
 );
 
 -- The Tote holds the shared Perfume and a private Lipstick, so it's shared.
