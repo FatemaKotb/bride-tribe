@@ -4,7 +4,7 @@
 -- A small wedding, built through the contract functions
 -- ---------------------------------------------------------------------
 
--- Sara: Perfume (shared, makeup), Hair clip (private, in Blue bag), Blue
+-- Sara: Perfume (shared), Hair clip (private, in Blue bag), Blue
 -- bag, Tote, a To the hotel car (2 seats), and the Giveaways she claimed.
 -- Mai: a copy of the Perfume, Photographer and Flowers (vendors, both
 -- unclaimed), Giveaways, and a Hotel to venue car. Bride: a To the hotel
@@ -18,8 +18,8 @@ begin
   insert into member (name, role) values ('Rana', 'bridesmaid');
 
   perform tests.act_as('Sara');
-  perform create_item(name => 'Perfume', emoji => '📿', visibility => 'shared', tags => array['makeup']);
-  perform create_item(name => 'Hair clip', tags => array['hair']);
+  perform create_item(name => 'Perfume', emoji => '📿', visibility => 'shared');
+  perform create_item(name => 'Hair clip');
   perform create_container(name => 'Blue bag', emoji => '👜');
   perform create_container(name => 'Tote');
   perform move_to_container(tests.item_id('Hair clip'), tests.item_id('Blue bag'));
@@ -30,7 +30,7 @@ begin
     trunk_percent => 50, notes => 'Leaving from Maadi');
 
   perform tests.act_as('Mai');
-  perform create_item(name => 'Perfume', emoji => '📿', visibility => 'shared', tags => array['makeup'],
+  perform create_item(name => 'Perfume', emoji => '📿', visibility => 'shared',
                       copy_of => tests.item_id('Perfume', 'Sara'));
   perform create_item(name => 'Photographer', emoji => '📸', type => 'claimable',
     vendor => '{"vendor_name": "Ahmed Hassan", "service": "Photographer",
@@ -268,7 +268,7 @@ begin
     return next at || ': field keys are ' || tests.keys_of(f);
     return;
   end if;
-  if f ->> 'type' not in ('text', 'textarea', 'number', 'emoji', 'tags', 'select', 'multiselect',
+  if f ->> 'type' not in ('text', 'textarea', 'number', 'emoji', 'select', 'multiselect',
                           'time', 'toggle', 'group', 'list') then
     return next at || ': type is ' || (f ->> 'type');
   end if;
@@ -313,7 +313,7 @@ create function tests.home_problems(home jsonb) returns setof text
 language plpgsql as $$
 begin
   if tests.keys_of(home) <> 'attention,me,my_status,status_board'
-     or tests.keys_of(home -> 'me') <> 'name,role_label'
+     or tests.keys_of(home -> 'me') <> 'name,title'
      or tests.keys_of(home -> 'my_status') <> 'label,options,updated,value' then
     return next 'get_home: keys are ' || tests.keys_of(home);
     return;
@@ -342,6 +342,7 @@ begin
   screen := 'list_items mine'; body := list_items()::jsonb; return next;
   screen := 'list_items shared'; body := list_items('{"owner": ["shared"]}')::jsonb; return next;
   screen := 'list_items vendors'; body := list_items('{"vendor": ["has_vendor"]}')::jsonb; return next;
+  screen := 'list_items all'; body := list_items('{"owner": []}')::jsonb; return next;
   for i in select * from item x where can_see_item(x, me) loop
     screen := 'get_item ' || i.name; body := get_item(i.id)::jsonb; return next;
   end loop;
@@ -350,6 +351,7 @@ begin
     body := list_cars(jsonb_build_object('trip', jsonb_build_array(t)))::jsonb;
     return next;
   end loop;
+  screen := 'list_cars all'; body := list_cars('{"trip": []}')::jsonb; return next;
   for c in select * from car loop
     screen := 'get_car ' || car_title(c, me) || ' ' || c.trip; body := get_car(c.id)::jsonb; return next;
   end loop;
@@ -358,6 +360,7 @@ begin
     body := list_requests(jsonb_build_object('state', jsonb_build_array(s)))::jsonb;
     return next;
   end loop;
+  screen := 'list_requests all'; body := list_requests('{"state": []}')::jsonb; return next;
 end;
 $$;
 

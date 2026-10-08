@@ -3,7 +3,7 @@ begin;
 \ir _helpers.psql
 \ir _read_helpers.psql
 
-select plan(51);
+select plan(50);
 
 select tests.wedding();
 
@@ -38,7 +38,7 @@ select is(
 
 select is(
   tests.field_keys(get_form('item', '{}')::jsonb),
-  'name,emoji,description,quantity,tags,type,visibility,vendor',
+  'name,emoji,description,quantity,type,visibility,vendor',
   'the item form''s fields'
 );
 
@@ -82,21 +82,15 @@ select is(
 );
 
 select is(
-  tests.option_labels(tests.field(get_form('item', '{}')::jsonb, 'tags')),
-  'hair, makeup',
-  'tag suggestions are the tags already in use'
-);
-
-select is(
   (select (f - 'fields') || jsonb_build_object('values', (
      select jsonb_object_agg(x ->> 'key', x -> 'value') from jsonb_array_elements(f -> 'fields') x
-     where x ->> 'key' in ('name', 'tags', 'type', 'visibility')))
+     where x ->> 'key' in ('name', 'type', 'visibility')))
    from (select get_form('item', jsonb_build_object('item_id', tests.item_id('Perfume', 'Sara')))::jsonb as f) s),
   jsonb_build_object(
     'name', 'item', 'title', 'Edit item',
     'context', jsonb_build_object('item_id', tests.item_id('Perfume', 'Sara')),
     'submit', jsonb_build_object('function', 'update_item', 'label', 'Save'),
-    'values', '{"name": "Perfume", "tags": ["makeup"], "type": "personal", "visibility": "shared"}'::jsonb),
+    'values', '{"name": "Perfume", "type": "personal", "visibility": "shared"}'::jsonb),
   'editing my item: its current values, submitted to update_item'
 );
 
@@ -136,13 +130,13 @@ select tests.act_as('Nour');
 select is(
   (select (f - 'fields') || jsonb_build_object('values', (
      select jsonb_object_agg(x ->> 'key', x -> 'value') from jsonb_array_elements(f -> 'fields') x
-     where x ->> 'key' in ('name', 'emoji', 'tags', 'type', 'visibility')))
+     where x ->> 'key' in ('name', 'emoji', 'type', 'visibility')))
    from (select get_form('item', jsonb_build_object('copy_of', tests.item_id('Perfume', 'Sara')))::jsonb as f) s),
   jsonb_build_object(
     'name', 'item', 'title', 'Add to my list',
     'context', jsonb_build_object('copy_of', tests.item_id('Perfume', 'Sara')),
     'submit', jsonb_build_object('function', 'create_item', 'label', 'Save'),
-    'values', '{"name": "Perfume", "emoji": "📿", "tags": ["makeup"], "type": "personal",
+    'values', '{"name": "Perfume", "emoji": "📿", "type": "personal",
                 "visibility": "shared"}'::jsonb),
   'Add to my list: the form is pre-filled from the shared item (BR-07)'
 );
@@ -363,7 +357,7 @@ select is(
     'name', 'passenger_offer', 'title', 'Offer a seat',
     'context', jsonb_build_object('car_id', tests.car_id('Sara'), 'kind', 'passenger', 'direction', 'offer'),
     'submit', jsonb_build_object('function', 'send_request', 'label', 'Send offer'),
-    'who', 'Bride (Bride), Mai (Maid of Honor), Nour (Bridesmaid), Rana (Bridesmaid)'),
+    'who', 'Bride 👑, Mai 🎀, Nour, Rana'),
   'offering a seat: everyone else, submitted to send_request as a passenger Offer'
 );
 
@@ -385,7 +379,7 @@ select tests.act_as('Sara');
 select is(
   tests.option_labels(tests.field(
     get_form('passenger_offer', jsonb_build_object('car_id', tests.car_id('Sara')))::jsonb, 'passenger_id')),
-  'Bride (Bride), Mai (Maid of Honor)',
+  'Bride 👑, Mai 🎀',
   'but not members with a pending request with this car, or a ride on this trip'
 );
 

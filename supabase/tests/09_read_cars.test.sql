@@ -4,7 +4,7 @@ begin;
 \ir _helpers.psql
 \ir _read_helpers.psql
 
-select plan(39);
+select plan(41);
 
 select tests.wedding();
 
@@ -87,9 +87,23 @@ select is(
 );
 
 select is(
+  tests.titles(list_cars('{"trip": []}')::jsonb),
+  'Bride''s car, Sara''s car, Mai''s car, Rana''s car, Your car',
+  'an empty Trip filter lists every trip''s cars, by trip, then departure (ruling 2026-10-08)'
+);
+
+select is(
+  (select jsonb_build_array(l -> 'filters' -> 0 -> 'selected', tests.action_ids(l), l ->> 'empty_message',
+                            tests.row_titled(l, 'Mai''s car') ->> 'subtitle')
+   from (select list_cars('{"trip": []}')::jsonb as l) s),
+  '[[], "", "No cars yet.", "Hotel to venue · leaves 6:00 pm–6:30 pm · 0 of 3 seats taken"]',
+  'every trip: nothing chosen, each row names its trip, and no I''m coming with my car, which needs a trip'
+);
+
+select is(
   tests.titles(list_cars('{"trip": ["moon"]}')::jsonb),
-  'Bride''s car, Sara''s car',
-  'an unknown trip falls back to To the hotel'
+  'Bride''s car, Sara''s car, Mai''s car, Rana''s car, Your car',
+  'an unknown trip also means every trip'
 );
 
 select tests.act_as('Sara');
@@ -233,7 +247,7 @@ select tests.act_as('Nour');
 select is(
   (select tests.action_ids(r) || ' / ' || (r -> 'actions' -> 0 ->> 'confirm')
    from (select tests.row_titled(tests.section(get_car(tests.car_id('Sara'))::jsonb, 'Passengers'),
-                                 'Nour (Bridesmaid)') as r) s),
+                                 'Nour') as r) s),
   'leave / Leave Sara''s car?',
   'a confirmed passenger sees herself listed, with Leave this car'
 );
@@ -242,7 +256,7 @@ select tests.act_as('Sara');
 
 select is(
   tests.action_ids(tests.row_titled(tests.section(get_car(tests.car_id('Sara'))::jsonb, 'Passengers'),
-                                    'Nour (Bridesmaid)')),
+                                    'Nour')),
   '',
   'the car owner can''t remove a passenger (BR-21)'
 );

@@ -3,15 +3,17 @@
 begin;
 \ir _helpers.psql
 
-select plan(67);
+select plan(68);
 
 select tests.reset_members();
+
+select hasnt_column('public', 'item', 'tags', 'items have no tags (ruling 2026-10-08)');
 
 -- ---------------------------------------------------------------------
 -- create_item
 -- ---------------------------------------------------------------------
 
-select has_function('public', 'create_item', array['text', 'text', 'text', 'integer', 'text[]', 'item_type', 'item_visibility', 'jsonb', 'uuid']);
+select has_function('public', 'create_item', array['text', 'text', 'text', 'integer', 'item_type', 'item_visibility', 'jsonb', 'uuid']);
 
 select tests.no_session();
 
@@ -25,16 +27,15 @@ select tests.act_as('Sara');
 
 select create_item(
   name => '  Perfume ', emoji => '📿', description => '  ', quantity => 2,
-  tags => array[' makeup', 'emergency kit', 'makeup', ''],
   type => 'personal', visibility => 'shared'
 );
 
 select is(
   tests.item_fields(tests.item_id('Perfume')),
   '{"kind": "item", "owner": "Sara", "name": "Perfume", "emoji": "📿", "description": null,
-    "quantity": 2, "tags": ["makeup", "emergency kit"], "visibility": "shared",
+    "quantity": 2, "visibility": "shared",
     "type": "personal", "claimed_by": null, "in": null, "packed": false}',
-  'create_item saves my item, trimming text and dropping blank and repeated tags'
+  'create_item saves my item, trimming text'
 );
 
 select create_item(name => 'Hair clip');
@@ -42,7 +43,7 @@ select create_item(name => 'Hair clip');
 select is(
   tests.item_fields(tests.item_id('Hair clip')),
   '{"kind": "item", "owner": "Sara", "name": "Hair clip", "emoji": null, "description": null,
-    "quantity": null, "tags": [], "visibility": "private",
+    "quantity": null, "visibility": "private",
     "type": "personal", "claimed_by": null, "in": null, "packed": false}',
   'create_item defaults to a private personal item'
 );
@@ -163,7 +164,7 @@ select create_container(name => ' Blue bag ', emoji => '👜');
 select is(
   tests.item_fields(tests.item_id('Blue bag')),
   '{"kind": "container", "owner": "Sara", "name": "Blue bag", "emoji": "👜", "description": null,
-    "quantity": null, "tags": [], "visibility": null,
+    "quantity": null, "visibility": null,
     "type": null, "claimed_by": null, "in": null, "packed": false}',
   'create_container makes a bag that belongs to me (BR-10)'
 );
@@ -208,7 +209,7 @@ select create_item(
 select is(
   tests.item_fields(tests.item_id('Perfume', 'Mai')),
   '{"kind": "item", "owner": "Mai", "name": "Perfume", "emoji": "📿", "description": null,
-    "quantity": null, "tags": [], "visibility": "shared",
+    "quantity": null, "visibility": "shared",
     "type": "personal", "claimed_by": null, "in": null, "packed": false}',
   'a copy is a new item of mine, with the fields as submitted'
 );
@@ -284,7 +285,7 @@ select is(
 -- update_item
 -- ---------------------------------------------------------------------
 
-select has_function('public', 'update_item', array['uuid', 'text', 'text', 'text', 'integer', 'text[]', 'item_type', 'item_visibility', 'jsonb']);
+select has_function('public', 'update_item', array['uuid', 'text', 'text', 'text', 'integer', 'item_type', 'item_visibility', 'jsonb']);
 
 select tests.no_session();
 
@@ -323,13 +324,13 @@ select tests.act_as('Sara');
 select update_item(
   tests.item_id('Perfume', 'Sara'),
   name => 'Perfume (Dior)', emoji => '🌸', description => 'The small bottle',
-  quantity => 1, tags => array['makeup'], type => 'personal', visibility => 'shared'
+  quantity => 1, type => 'personal', visibility => 'shared'
 );
 
 select is(
   tests.item_fields(tests.item_id('Perfume (Dior)')),
   '{"kind": "item", "owner": "Sara", "name": "Perfume (Dior)", "emoji": "🌸",
-    "description": "The small bottle", "quantity": 1, "tags": ["makeup"], "visibility": "shared",
+    "description": "The small bottle", "quantity": 1, "visibility": "shared",
     "type": "personal", "claimed_by": null, "in": null, "packed": false}',
   'the owner can change every field'
 );

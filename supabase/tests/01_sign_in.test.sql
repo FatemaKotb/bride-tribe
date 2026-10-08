@@ -22,12 +22,12 @@ select tests.no_session();
 select is(
   list_members_for_login()::jsonb,
   jsonb_build_object('members', jsonb_build_array(
-    jsonb_build_object('id', tests.member_id('Bride'), 'name', 'Bride', 'role_label', 'Bride'),
-    jsonb_build_object('id', tests.member_id('Mai'),   'name', 'Mai',   'role_label', 'Maid of Honor'),
-    jsonb_build_object('id', tests.member_id('Nour'),  'name', 'Nour',  'role_label', 'Bridesmaid'),
-    jsonb_build_object('id', tests.member_id('Sara'),  'name', 'Sara',  'role_label', 'Bridesmaid')
+    jsonb_build_object('id', tests.member_id('Bride'), 'name', 'Bride', 'title', 'Bride 👑'),
+    jsonb_build_object('id', tests.member_id('Mai'),   'name', 'Mai',   'title', 'Mai 🎀'),
+    jsonb_build_object('id', tests.member_id('Nour'),  'name', 'Nour',  'title', 'Nour'),
+    jsonb_build_object('id', tests.member_id('Sara'),  'name', 'Sara',  'title', 'Sara')
   )),
-  'list_members_for_login works with no session and lists names and roles, by role then name'
+  'list_members_for_login works with no session and lists names, with an emoji for the bride and maid of honor instead of a role, by role then name (ruling 2026-10-08)'
 );
 
 select tests.new_session('signed-out phone');
@@ -38,15 +38,15 @@ select is(
   'list_members_for_login works for a session not linked to a member'
 );
 
-update option_label set label = 'Bridesmaid ✿' where option_set = 'role' and value = 'bridesmaid';
+update option_label set emoji = '🌷' where option_set = 'role' and value = 'bridesmaid';
 
 select is(
-  list_members_for_login()::jsonb #>> '{members,3,role_label}',
-  'Bridesmaid ✿',
-  'role labels come from option_label'
+  list_members_for_login()::jsonb #>> '{members,3,title}',
+  'Sara 🌷',
+  'the emoji after a name comes from the role''s option_label'
 );
 
-update option_label set label = 'Bridesmaid' where option_set = 'role' and value = 'bridesmaid';
+update option_label set emoji = null where option_set = 'role' and value = 'bridesmaid';
 
 -- ---------------------------------------------------------------------
 -- sign_in
@@ -59,8 +59,8 @@ select tests.new_session('phone A');
 select is(
   sign_in(tests.member_id('Sara'))::jsonb,
   jsonb_build_object('me', jsonb_build_object(
-    'id', tests.member_id('Sara'), 'name', 'Sara', 'role_label', 'Bridesmaid')),
-  'sign_in returns me with id, name, and role label'
+    'id', tests.member_id('Sara'), 'name', 'Sara', 'title', 'Sara')),
+  'sign_in returns me with id, name, and title'
 );
 
 select is(current_member_id(), tests.member_id('Sara'), 'sign_in links the session to the member');

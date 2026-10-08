@@ -17,18 +17,18 @@ const lavender: MantineColorsTuple = [
   '#46346f',
 ];
 
-// The script face for the app's name. Fonts load from Google Fonts in
-// index.html.
-export const BRAND_FONT = '"Great Vibes", cursive';
+// One font everywhere, headings included. Nunito loads from Google Fonts
+// in index.html.
+const FONT = 'Nunito, "Segoe UI", Roboto, sans-serif';
 
 export const theme = createTheme({
   primaryColor: 'lavender',
   primaryShade: 6,
   colors: { lavender },
-  fontFamily: 'Nunito, "Segoe UI", Roboto, sans-serif',
+  fontFamily: FONT,
   headings: {
-    fontFamily: '"Playfair Display", Georgia, serif',
-    fontWeight: '600',
+    fontFamily: FONT,
+    fontWeight: '800',
   },
   defaultRadius: 'lg',
   components: {

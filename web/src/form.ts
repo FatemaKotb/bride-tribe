@@ -25,7 +25,6 @@ function initialValue(field: Field): Json {
 
 function emptyValue(field: Field): Json {
   switch (field.type) {
-    case 'tags':
     case 'multiselect':
       return [];
     case 'toggle':
@@ -76,8 +75,6 @@ function outgoing(field: Field, value: Json, scope: Values): Json {
       const allowed = visibleOptions(field, scope).map((o) => o.value);
       return ((value ?? []) as string[]).filter((v) => allowed.includes(v));
     }
-    case 'tags':
-      return value ?? [];
     case 'toggle':
       return Boolean(value);
     case 'time':

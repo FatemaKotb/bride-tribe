@@ -119,7 +119,6 @@ language sql stable as $$
     'emoji',       i.emoji,
     'description', i.description,
     'quantity',    i.quantity,
-    'tags',        i.tags,
     'visibility',  i.visibility,
     'type',        i.type,
     'claimed_by',  (select name from member where id = i.claimed_by_id),

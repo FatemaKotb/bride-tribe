@@ -4,7 +4,7 @@ begin;
 \ir _helpers.psql
 \ir _read_helpers.psql
 
-select plan(54);
+select plan(60);
 
 select tests.wedding();
 
@@ -40,7 +40,7 @@ select is(
 
 select is(
   (select string_agg(f ->> 'key', ',') from jsonb_array_elements(list_items()::jsonb -> 'filters') f),
-  'owner,kind,type,packed,vendor,container,tag',
+  'owner,kind,type,packed,vendor,container',
   'my items can be filtered by every filter (BR-09a)'
 );
 
@@ -108,7 +108,7 @@ select is(
 );
 
 select tests.act_as('Nour');
-select create_item(name => 'Shoes', tags => array['secret']);
+select create_item(name => 'Shoes');
 
 select is(
   tests.action_ids(tests.row_titled(list_items()::jsonb, 'Shoes')),
@@ -129,9 +129,9 @@ select is(tests.titles(list_items(jsonb_build_object('container', array[tests.it
   'Hair clip', 'container filter: a bag');
 select is(tests.titles(list_items('{"container": ["none"]}')::jsonb), 'Giveaways, Perfume',
   'container filter: items not in a bag');
-select is(tests.titles(list_items('{"tag": "makeup"}')::jsonb), 'Perfume',
-  'tag filter, also given as a plain value');
-select is(tests.titles(list_items('{"owner": ["everyone"], "type": ["bogus"]}')::jsonb),
+select is(tests.titles(list_items('{"type": "claimable"}')::jsonb), 'Giveaways',
+  'a filter given as a plain value');
+select is(tests.titles(list_items('{"owner": ["mine"], "type": ["bogus"]}')::jsonb),
   'Blue bag, Tote, Giveaways, Hair clip, Perfume',
   'unknown filter values are ignored');
 
@@ -143,16 +143,53 @@ select is(
 );
 
 select is(
-  tests.option_labels((select f from jsonb_array_elements(list_items()::jsonb -> 'filters') f
-                       where f ->> 'key' = 'tag')),
-  'hair, makeup',
-  'the tag filter offers tags in use on items I can see, not on others'' private items (BR-05)'
-);
-
-select is(
   tests.action_ids(list_items()::jsonb),
   'add_item,add_bag',
   'screen actions: Add item and Add bag or box'
+);
+
+-- ---------------------------------------------------------------------
+-- list_items: everything (ruling 2026-10-08)
+-- ---------------------------------------------------------------------
+
+select is(
+  tests.titles(list_items('{"owner": []}')::jsonb),
+  'Blue bag, Tote, Flowers, Giveaways, Hair clip, Perfume, Photographer',
+  'an empty Show filter lists everything: my things, and claimable items others own'
+);
+
+select is(
+  list_items('{"owner": []}')::jsonb -> 'filters' -> 0 -> 'selected',
+  '[]',
+  'with everything shown, Show has nothing chosen'
+);
+
+select is(
+  (select string_agg(f ->> 'key', ',')
+   from jsonb_array_elements(list_items('{"owner": []}')::jsonb -> 'filters') f),
+  'owner,kind,type,packed,vendor,container',
+  'everything can be filtered like my items'
+);
+
+select is(tests.titles(list_items('{"owner": ["everyone"]}')::jsonb),
+  'Blue bag, Tote, Flowers, Giveaways, Hair clip, Perfume, Photographer',
+  'an unknown Show choice also means everything');
+
+select is(tests.titles(list_items('{"owner": [], "type": ["claimable"]}')::jsonb),
+  'Flowers, Giveaways, Photographer',
+  'everything, claimable only');
+
+select is(tests.titles(list_items('{"owner": [], "packed": ["packed"]}')::jsonb), 'Blue bag',
+  'packing is personal, so with the packed filter on only my things are left');
+
+select tests.act_as('Nour');
+
+select is(
+  (select tests.titles(l) || ' / ' || (tests.row_titled(l, 'Perfume') ->> 'subtitle')
+            || ' / ' || tests.action_ids(tests.row_titled(l, 'Perfume'))
+   from (select list_items('{"owner": []}')::jsonb as l) s),
+  'Flowers, Giveaways, Perfume, Photographer, Shoes / Sara, Mai / add_to_list',
+  'a shared group I don''t have shows as one row, with Add to my list'
 );
 
 -- ---------------------------------------------------------------------
@@ -170,7 +207,7 @@ select is(
 select is(
   (select string_agg(f ->> 'key', ',')
    from jsonb_array_elements(list_items('{"owner": ["shared"]}')::jsonb -> 'filters') f),
-  'owner,type,vendor,tag',
+  'owner,type,vendor',
   'bags and packing are personal, so the shared view leaves those filters out'
 );
 
@@ -209,7 +246,7 @@ select is(
 );
 
 select update_item(tests.item_id('Perfume', 'Mai'), name => 'Perfume', emoji => '📿',
-                   tags => array['makeup'], type => 'personal', visibility => 'private');
+                   type => 'personal', visibility => 'private');
 
 select is(
   (select r ->> 'subtitle' || ' / ' || tests.badges(r)
@@ -219,7 +256,7 @@ select is(
 );
 
 select update_item(tests.item_id('Perfume', 'Mai'), name => 'Perfume', emoji => '📿',
-                   tags => array['makeup'], type => 'personal', visibility => 'shared');
+                   type => 'personal', visibility => 'shared');
 select tests.act_as('Sara');
 select delete_item(tests.item_id('Perfume', 'Sara'));
 select tests.act_as('Nour');
@@ -265,7 +302,7 @@ select is(
 select is(
   (select string_agg(f ->> 'key', ',')
    from jsonb_array_elements(list_items('{"vendor": ["has_vendor"]}')::jsonb -> 'filters') f),
-  'vendor,packed,tag',
+  'vendor,packed',
   'the vendor view drops the owner filter, which doesn''t apply'
 );
 
@@ -325,8 +362,8 @@ select tests.act_as('Sara');
 
 select is(
   tests.pairs_text(tests.section(get_item(tests.item_id('Hair clip'))::jsonb, 'Details')),
-  'Tags: hair; Added by: Sara; Visibility: Private; Type: Personal; In: Blue bag; Packing: Not packed',
-  'my item shows its tags and its bag'
+  'Added by: Sara; Visibility: Private; Type: Personal; In: Blue bag; Packing: Not packed',
+  'my item shows its bag'
 );
 
 select tests.act_as('Nour');

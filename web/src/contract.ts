@@ -93,7 +93,6 @@ export type FieldType =
   | 'textarea'
   | 'number'
   | 'emoji'
-  | 'tags'
   | 'select'
   | 'multiselect'
   | 'time'
@@ -132,11 +131,12 @@ export interface FormSchema {
   submit: { function: string; label: string };
 }
 
-// Section 2: sign-in.
+// Section 2: sign-in. The title is the name, with an emoji after the
+// bride's and maid of honor's (ruling 2026-10-08).
 export interface LoginMember {
   id: string;
   name: string;
-  role_label: string;
+  title: string;
 }
 
 export interface MembersForLogin {
@@ -145,7 +145,7 @@ export interface MembersForLogin {
 
 // Section 3: get_home.
 export interface Home {
-  me: { name: string; role_label: string };
+  me: { name: string; title: string };
   my_status: {
     value: string;
     label: string;

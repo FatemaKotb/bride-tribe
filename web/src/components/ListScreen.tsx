@@ -31,16 +31,15 @@ export function ListScreen({ fn }: { fn: string }) {
     lastFilters.set(fn, raw);
   }, [fn, raw]);
 
-  // Send back every filter's current choice, with this one changed. The
-  // backend decides what an empty choice means.
-  function choose(list: ListResponse, filter: Filter, value: string) {
+  // Send back every filter's current choice, with this one changed. A
+  // null value is All: an empty choice, which the backend reads as
+  // everything.
+  function choose(list: ListResponse, filter: Filter, value: string | null) {
     const choices: FilterChoices = Object.fromEntries(list.filters.map((f) => [f.key, f.selected]));
     const selected = filter.selected;
-    choices[filter.key] = selected.includes(value)
-      ? selected.filter((v) => v !== value)
-      : filter.multi
-        ? [...selected, value]
-        : [value];
+    if (value === null) choices[filter.key] = [];
+    else if (!filter.multi) choices[filter.key] = [value];
+    else choices[filter.key] = selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value];
     setParams({ filters: JSON.stringify(choices) }, { replace: true });
   }
 
@@ -62,9 +61,15 @@ export function ListScreen({ fn }: { fn: string }) {
 // view on a phone. The first filter always shows.
 const FOLD_AFTER = 3;
 
-function FilterBar({ filters: all, onChoose }: { filters: Filter[]; onChoose: (filter: Filter, value: string) => void }) {
+function FilterBar({
+  filters: all,
+  onChoose,
+}: {
+  filters: Filter[];
+  onChoose: (filter: Filter, value: string | null) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
-  // A filter with nothing to choose, such as Tag before any tags exist.
+  // A filter with no options has nothing to choose.
   const filters = all.filter((f) => f.options.length > 0);
   const folds = filters.length > FOLD_AFTER;
   const shown = folds && !expanded ? filters.slice(0, 1) : filters;
@@ -88,29 +93,33 @@ function FilterBar({ filters: all, onChoose }: { filters: Filter[]; onChoose: (f
 }
 
 // Chips wrap rather than scroll, so the chosen one is always in view.
-function FilterChips({ filter, onChoose }: { filter: Filter; onChoose: (value: string) => void }) {
+// "All" comes first and is chosen when nothing else is.
+function FilterChips({ filter, onChoose }: { filter: Filter; onChoose: (value: string | null) => void }) {
   return (
     <Group gap="xs" wrap="nowrap" align="flex-start">
       <Text size="sm" c="dimmed" w={64} pt={4} style={{ flexShrink: 0 }}>
         {filter.label}
       </Text>
       <Group gap={6} style={{ flex: 1 }}>
-        {filter.options.map((option) => {
-          // Solid when chosen, outlined otherwise, so the choice stands out.
-          const checked = filter.selected.includes(option.value);
-          return (
-            <Chip
-              key={option.value}
-              size="sm"
-              variant={checked ? 'filled' : 'outline'}
-              checked={checked}
-              onChange={() => onChoose(option.value)}
-            >
-              {option.emoji ? `${option.emoji} ${option.label}` : option.label}
-            </Chip>
-          );
-        })}
+        <FilterChip label="All" checked={filter.selected.length === 0} onChange={() => onChoose(null)} />
+        {filter.options.map((option) => (
+          <FilterChip
+            key={option.value}
+            label={option.emoji ? `${option.emoji} ${option.label}` : option.label}
+            checked={filter.selected.includes(option.value)}
+            onChange={() => onChoose(option.value)}
+          />
+        ))}
       </Group>
     </Group>
+  );
+}
+
+// Solid when chosen, outlined otherwise, so the choice stands out.
+function FilterChip({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return (
+    <Chip size="sm" variant={checked ? 'filled' : 'outline'} checked={checked} onChange={onChange}>
+      {label}
+    </Chip>
   );
 }

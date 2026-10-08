@@ -36,7 +36,7 @@ root.
 ```bash
 npx supabase login
 npx supabase link --project-ref <project-ref>
-npx supabase db push --dry-run        # lists the 6 migrations it will apply
+npx supabase db push --dry-run        # lists the migrations it will apply
 npx supabase db push --include-seed
 ```
 
@@ -123,6 +123,8 @@ Supabase awake** workflow calls `list_members_for_login` every 3 days.
 - **The app:** push to `main`. The Deploy workflow republishes it, and
   phones pick up the new version the next time the app is opened.
 - **The database:** add a migration, then run `npx supabase db push`.
+- **Both:** push the database first, then the app, so the new app never
+  talks to the old database.
 
 ## If something goes wrong
 

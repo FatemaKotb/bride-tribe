@@ -10,7 +10,6 @@ import {
   Paper,
   Stack,
   Switch,
-  TagsInput,
   Textarea,
   TextInput,
 } from '@mantine/core';
@@ -121,16 +120,6 @@ function FieldInput({
           inputMode="numeric"
           defaultValue={asText(value)}
           onChangeRaw={(_raw, masked) => onChange(masked)}
-        />
-      );
-
-    case 'tags':
-      return (
-        <TagsInput
-          {...common}
-          data={(field.options ?? []).map((o) => o.value)}
-          value={asList(value)}
-          onChange={onChange}
         />
       );
 

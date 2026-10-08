@@ -31,8 +31,8 @@ update member set status_updated_at = now() - interval '12 minutes' where name =
 
 select is(
   get_home()::jsonb -> 'me',
-  '{"name": "Sara", "role_label": "Bridesmaid"}',
-  'me: my name and role, for the header (BR-03a)'
+  '{"name": "Sara", "title": "Sara"}',
+  'me: my name, for the header (BR-03a), and my title'
 );
 
 select is(
@@ -51,14 +51,14 @@ select is(
 select is(
   (select string_agg(r ->> 'title', ', ' order by n)
    from jsonb_array_elements(get_home()::jsonb -> 'status_board') with ordinality as t (r, n)),
-  'Bride (Bride), Mai (Maid of Honor), Nour (Bridesmaid), Rana (Bridesmaid), Sara (Bridesmaid)',
-  'the status board lists every member with her role, by role then name (BR-01, BR-28)'
+  'Bride 👑, Mai 🎀, Nour, Rana, Sara',
+  'the status board lists every member by role then name, with an emoji for the bride and maid of honor instead of a role (BR-28, ruling 2026-10-08)'
 );
 
 select is(
   (select r ->> 'emoji' || ' ' || (r ->> 'subtitle')
    from jsonb_array_elements(get_home()::jsonb -> 'status_board') r
-   where r ->> 'title' = 'Sara (Bridesmaid)'),
+   where r ->> 'title' = 'Sara'),
   '💄 Doing makeup · 12 min ago',
   'each member''s status and how long ago it changed (BR-28)'
 );
